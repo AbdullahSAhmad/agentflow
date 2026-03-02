@@ -12,6 +12,7 @@ export function resolveColor(palette: AgentPalette, key: PaletteKey): number | n
     case 'outline':     return palette.outline;
     case 'highlight':   return palette.highlight;
     case 'eye':         return palette.eye;
+    case 'skin':        return palette.skin;
     case 'transparent': return null;
   }
 }
