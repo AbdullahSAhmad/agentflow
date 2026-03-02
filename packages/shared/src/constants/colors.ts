@@ -36,3 +36,39 @@ export const COLORS = {
   relationshipLine: 0x555555,
   teamLine: 0x44ff44,
 } as const;
+
+/** Model pricing per million tokens (USD) */
+export interface ModelPricing {
+  input: number;
+  output: number;
+}
+
+export const MODEL_PRICING: Record<string, ModelPricing> = {
+  'claude-opus-4-6': { input: 15, output: 75 },
+  'claude-opus-4-5-20250620': { input: 15, output: 75 },
+  'claude-sonnet-4-6': { input: 3, output: 15 },
+  'claude-sonnet-4-5-20250514': { input: 3, output: 15 },
+  'claude-sonnet-4-0-20250514': { input: 3, output: 15 },
+  'claude-haiku-4-5-20251001': { input: 1, output: 5 },
+  'claude-3-5-sonnet-20241022': { input: 3, output: 15 },
+  'claude-3-5-haiku-20241022': { input: 1, output: 5 },
+};
+
+/** Default pricing when model is unknown */
+export const DEFAULT_PRICING: ModelPricing = { input: 3, output: 15 };
+
+/** Get pricing for a model string (fuzzy match) */
+export function getModelPricing(model: string | null): ModelPricing {
+  if (!model) return DEFAULT_PRICING;
+  // Exact match
+  if (MODEL_PRICING[model]) return MODEL_PRICING[model];
+  // Fuzzy: check if model contains a known key
+  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
+    if (model.includes(key) || key.includes(model)) return pricing;
+  }
+  // Fuzzy by family name
+  if (model.includes('opus')) return MODEL_PRICING['claude-opus-4-6'];
+  if (model.includes('haiku')) return MODEL_PRICING['claude-haiku-4-5-20251001'];
+  if (model.includes('sonnet')) return MODEL_PRICING['claude-sonnet-4-6'];
+  return DEFAULT_PRICING;
+}

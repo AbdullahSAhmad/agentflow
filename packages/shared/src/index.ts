@@ -7,5 +7,5 @@ export type { ServerMessage, ClientMessage, FullStateMessage, AgentSpawnMessage,
 // Constants
 export { TOOL_ZONE_MAP, getZoneForTool } from './constants/tools.js';
 export { ZONES, ZONE_MAP, WORLD_WIDTH, WORLD_HEIGHT } from './constants/zones.js';
-export { AGENT_PALETTES, COLORS } from './constants/colors.js';
-export type { AgentPalette } from './constants/colors.js';
+export { AGENT_PALETTES, COLORS, MODEL_PRICING, DEFAULT_PRICING, getModelPricing } from './constants/colors.js';
+export type { AgentPalette, ModelPricing } from './constants/colors.js';

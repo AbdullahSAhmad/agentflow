@@ -12,6 +12,8 @@ export interface AgentState {
   teamName: string | null;
   currentZone: ZoneId;
   currentTool: string | null;
+  currentActivity: string | null;
+  taskDescription: string | null; // high-level task summary (e.g. "Implement dark mode")
   speechText: string | null;
   lastActivityAt: number;
   spawnedAt: number;

@@ -92,11 +92,42 @@ export class AgentDetailPanel {
     nameEl.innerHTML = `<span style="color:${borderColor}">\u25CF</span> ${this.esc(name)} <span class="detail-role">${agent.role.toUpperCase()}</span>`;
 
     const metaEl = this.panelEl.querySelector('#detail-meta')!;
+
+    // Resolve parent name
+    let parentHtml = '';
+    if (agent.parentId) {
+      const parent = this.store.getAgent(agent.parentId);
+      const parentName = parent ? (parent.projectName || parent.sessionId.slice(0, 10)) : agent.parentId.slice(0, 10);
+      parentHtml = `<div>Parent: <a href="#" class="detail-link" data-agent-id="${this.esc(agent.parentId)}">${this.esc(parentName)}</a></div>`;
+    }
+
+    // Find children (subagents whose parentId = this agent)
+    let childrenHtml = '';
+    const children = Array.from(this.store.getAgents().values()).filter(a => a.parentId === agent.id);
+    if (children.length > 0) {
+      const names = children.map(c => {
+        const n = c.projectName || c.sessionId.slice(0, 10);
+        return `<a href="#" class="detail-link" data-agent-id="${this.esc(c.id)}">${this.esc(n)}</a>`;
+      });
+      childrenHtml = `<div>Subagents: ${names.join(', ')}</div>`;
+    }
+
     metaEl.innerHTML = `
       <div>Session: <code>${agent.sessionId.slice(0, 16)}...</code></div>
       ${agent.model ? `<div>Model: <code>${this.esc(agent.model)}</code></div>` : ''}
       ${agent.teamName ? `<div>Team: ${this.esc(agent.teamName)}</div>` : ''}
+      ${parentHtml}
+      ${childrenHtml}
     `;
+
+    // Bind clickable links to navigate to parent/child
+    metaEl.querySelectorAll('.detail-link').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = (el as HTMLElement).dataset.agentId;
+        if (targetId) this.open(targetId);
+      });
+    });
   }
 
   private renderStats(agent: AgentState): void {

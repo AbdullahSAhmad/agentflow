@@ -34,6 +34,34 @@
       letter-spacing: 2px;
       text-transform: uppercase;
     }
+    .sidebar-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .sidebar-top-row h2 { margin-bottom: 0; }
+    .sidebar-actions {
+      display: flex;
+      gap: 4px;
+    }
+    .sidebar-actions button {
+      width: 28px;
+      height: 28px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.05);
+      color: #888;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      padding: 0;
+    }
+    .sidebar-actions button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
     #overlay .agent-card {
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255,255,255,0.08);
@@ -41,14 +69,57 @@
       padding: 10px 12px;
       margin-bottom: 8px;
       transition: background 0.2s;
+      cursor: pointer;
     }
     #overlay .agent-card:hover {
       background: rgba(255, 255, 255, 0.07);
+    }
+    #overlay .agent-card .card-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
     #overlay .agent-card .name {
       font-weight: 600;
       font-size: 13px;
       color: #fff;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sparkline-canvas {
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+    /* Subagent nesting */
+    .subagent-group {
+      padding-left: 12px;
+      margin-left: 4px;
+      border-left: 2px solid rgba(171, 71, 188, 0.2);
+    }
+    .agent-card-child {
+      background: rgba(171, 71, 188, 0.04) !important;
+      border: 1px solid rgba(171, 71, 188, 0.1) !important;
+      font-size: 12px;
+    }
+    .agent-card-child .name { font-size: 12px; }
+    .child-connector {
+      color: rgba(171, 71, 188, 0.4);
+      font-family: monospace;
+      margin-right: 4px;
+      font-size: 11px;
+    }
+    .sub-count {
+      background: rgba(171, 71, 188, 0.15);
+      color: #ab47bc;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 6px;
+      white-space: nowrap;
     }
     #overlay .agent-card .zone {
       color: #999;
@@ -59,6 +130,15 @@
       color: #7ab8f5;
       font-size: 12px;
       margin-top: 2px;
+    }
+    #overlay .agent-card .task-desc {
+      color: #c4b5fd;
+      font-size: 11px;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-style: italic;
     }
     #connection-status {
       padding: 5px 10px;
@@ -71,8 +151,52 @@
     .connected { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
     .disconnected { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
 
-    /* Zoom controls */
-    /* Audio controls */
+    /* ── Filter Pills ── */
+    #filter-pills {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-pill {
+      height: 26px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 13px;
+      background: rgba(255,255,255,0.04);
+      color: #888;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0 12px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .filter-pill:hover { background: rgba(255,255,255,0.08); color: #ccc; }
+    .filter-pill.active {
+      background: rgba(233, 69, 96, 0.15);
+      color: #e94560;
+      border-color: rgba(233, 69, 96, 0.3);
+    }
+    .filter-zone-select {
+      height: 26px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 13px;
+      background: rgba(255,255,255,0.04);
+      color: #888;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 0 8px;
+      appearance: none;
+      -webkit-appearance: none;
+      outline: none;
+    }
+    .filter-zone-select:hover { background: rgba(255,255,255,0.08); color: #ccc; }
+    .filter-zone-select option { background: #1a1e38; color: #ccc; }
+
+    /* ── Audio controls ── */
     #audio-controls {
       display: flex;
       align-items: center;
@@ -129,7 +253,7 @@
     }
     #volume-label { font-size: 11px; color: #666; min-width: 28px; text-align: right; }
 
-    /* Agent Detail Panel */
+    /* ── Agent Detail Panel ── */
     #agent-detail-panel {
       position: absolute;
       top: 0;
@@ -189,6 +313,14 @@
     }
     #detail-meta { font-size: 11px; color: #666; line-height: 1.6; }
     #detail-meta code { color: #888; background: rgba(255,255,255,0.04); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+    .detail-link {
+      color: #ab47bc;
+      text-decoration: none;
+      border-bottom: 1px dotted rgba(171,71,188,0.4);
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+    .detail-link:hover { color: #ce93d8; }
     #detail-stats {
       padding: 10px 18px;
       border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -246,14 +378,12 @@
     .feed-shutdown { color: #f87171; }
     .feed-tokens { color: #666; }
 
-    #overlay .agent-card { cursor: pointer; }
-
-    /* Timeline bar */
+    /* ── Timeline bar ── */
     #timeline-bar {
       position: absolute;
       bottom: 0;
       left: 0;
-      right: 300px; /* match overlay width */
+      right: 300px;
       height: 52px;
       background: rgba(14, 16, 32, 0.95);
       backdrop-filter: blur(12px);
@@ -325,6 +455,7 @@
       display: block;
     }
 
+    /* ── Zoom controls ── */
     #zoom-controls {
       position: absolute;
       bottom: 68px;
@@ -364,12 +495,402 @@
       height: 18px;
       fill: currentColor;
     }
+
+    /* ═══════════════════════════════════════════
+       FEATURE 2: Command Palette (Cmd+K)
+       ═══════════════════════════════════════════ */
+    #command-palette {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 100;
+      display: none;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    #command-palette.open { display: block; }
+    .cmd-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+    }
+    .cmd-modal {
+      position: absolute;
+      top: 18%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 540px;
+      max-width: 90vw;
+      background: rgba(20, 22, 44, 0.98);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .cmd-input-wrap {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      gap: 10px;
+    }
+    .cmd-icon { font-size: 16px; opacity: 0.5; flex-shrink: 0; }
+    .cmd-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      font-weight: 400;
+    }
+    .cmd-input::placeholder { color: #555; }
+    .cmd-kbd {
+      font-size: 10px;
+      font-family: monospace;
+      color: #555;
+      background: rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
+    }
+    .cmd-list {
+      max-height: 340px;
+      overflow-y: auto;
+      padding: 6px;
+    }
+    .cmd-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      gap: 10px;
+      transition: background 0.1s;
+    }
+    .cmd-item:hover, .cmd-item.selected {
+      background: rgba(255,255,255,0.06);
+    }
+    .cmd-item.selected {
+      background: rgba(233, 69, 96, 0.12);
+      border: 1px solid rgba(233, 69, 96, 0.15);
+    }
+    .cmd-item-icon { font-size: 16px; flex-shrink: 0; width: 24px; text-align: center; }
+    .cmd-item-text { flex: 1; min-width: 0; }
+    .cmd-item-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #ddd;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cmd-item-desc {
+      font-size: 11px;
+      color: #666;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cmd-item-cat {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #555;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.04);
+      flex-shrink: 0;
+    }
+    .cmd-empty {
+      text-align: center;
+      padding: 20px;
+      color: #555;
+      font-style: italic;
+    }
+    .cmd-footer {
+      display: flex;
+      gap: 16px;
+      padding: 8px 16px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 11px;
+      color: #444;
+    }
+    .cmd-footer kbd {
+      font-family: monospace;
+      font-size: 10px;
+      background: rgba(255,255,255,0.05);
+      padding: 1px 4px;
+      border-radius: 3px;
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #666;
+      margin-right: 4px;
+    }
+
+    /* ═══════════════════════════════════════════
+       FEATURE 3: Analytics Panel
+       ═══════════════════════════════════════════ */
+    #analytics-panel {
+      position: absolute;
+      top: 0;
+      left: -400px;
+      width: 400px;
+      height: 100%;
+      background: rgba(14, 16, 32, 0.97);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid rgba(255,255,255,0.08);
+      color: #ccc;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      z-index: 20;
+      transition: left 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #analytics-panel.open { left: 0; }
+    .analytics-header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+    }
+    .analytics-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+    }
+    #analytics-close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: rgba(255,255,255,0.06);
+      border-radius: 6px;
+      color: #888;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #analytics-close:hover { background: rgba(255,255,255,0.12); color: #fff; }
+    #analytics-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px 18px;
+    }
+
+    /* Analytics Cards */
+    .analytics-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .analytics-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .analytics-card.total-cost {
+      grid-column: 1 / -1;
+      border-color: rgba(233, 69, 96, 0.15);
+      background: rgba(233, 69, 96, 0.05);
+    }
+    .card-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .card-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+    .total-cost .card-value { color: #e94560; }
+    .card-unit {
+      font-size: 12px;
+      font-weight: 500;
+      color: #888;
+    }
+    .card-sub {
+      font-size: 11px;
+      color: #666;
+      margin-top: 2px;
+    }
+
+    /* Analytics Sections */
+    .analytics-section {
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .analytics-empty {
+      color: #444;
+      font-style: italic;
+      font-size: 12px;
+      padding: 8px 0;
+    }
+
+    /* Sparkline */
+    .sparkline-container {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+    }
+    .velocity-spark { display: block; margin: 0 auto; }
+
+    /* Agent bar chart */
+    .agent-bar { margin-bottom: 8px; }
+    .agent-bar-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 3px;
+      font-size: 12px;
+    }
+    .agent-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .agent-bar-name {
+      flex: 1;
+      color: #ccc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .agent-bar-cost {
+      color: #888;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    .agent-bar-track {
+      height: 6px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .agent-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    /* Zone bar chart */
+    .zone-bar { margin-bottom: 8px; }
+    .zone-bar-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 3px;
+      font-size: 12px;
+      color: #aaa;
+    }
+    .zone-bar-cost { color: #666; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .zone-bar-track {
+      height: 6px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .zone-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    /* Threshold */
+    .threshold-section {
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding-top: 12px;
+    }
+    .threshold-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: #888;
+    }
+    .threshold-row input {
+      width: 80px;
+      height: 28px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      text-align: center;
+      outline: none;
+    }
+    .threshold-row input:focus { border-color: rgba(233,69,96,0.4); }
+    .threshold-status {
+      font-size: 11px;
+      margin-left: auto;
+    }
+
+    /* Cost alert toast */
+    #cost-alert {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(220, 38, 38, 0.95);
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 24px;
+      border-radius: 10px;
+      z-index: 200;
+      box-shadow: 0 8px 30px rgba(220,38,38,0.4);
+      pointer-events: none;
+    }
+    #cost-alert.flash {
+      animation: alertFlash 0.6s ease-in-out 3;
+    }
+    @keyframes alertFlash {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <div id="overlay">
-      <h2>AgentFlow</h2>
+      <div class="sidebar-top-row">
+        <h2>AgentFlow</h2>
+        <div class="sidebar-actions">
+          <button id="analytics-btn" title="Analytics (Ctrl+K to search)">&#128202;</button>
+          <button id="cmd-hint" title="Command Palette (Ctrl+K)">&#8984;K</button>
+        </div>
+      </div>
       <div id="connection-status" class="disconnected">Disconnected</div>
       <div id="audio-controls">
         <button id="mute-btn" title="Toggle Sound">&#128264;</button>

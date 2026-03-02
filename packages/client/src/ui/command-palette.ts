@@ -1,0 +1,280 @@
+import type { AgentState, ZoneId } from '@agentflow/shared';
+import { ZONES, ZONE_MAP } from '@agentflow/shared';
+import type { StateStore } from '../connection/state-store.js';
+
+/**
+ * Feature 2a: Command Palette (Cmd+K / Ctrl+K)
+ * Quick-action overlay with fuzzy search for navigating agents,
+ * zones, toggling features, and jumping in the timeline.
+ */
+
+export interface CommandAction {
+  id: string;
+  label: string;
+  description: string;
+  icon: string;
+  category: 'agent' | 'zone' | 'view' | 'audio' | 'feature';
+  action: () => void;
+}
+
+type CommandCallback = (action: string, payload?: any) => void;
+
+export class CommandPalette {
+  private el: HTMLElement;
+  private inputEl: HTMLInputElement;
+  private listEl: HTMLElement;
+  private isOpen = false;
+  private actions: CommandAction[] = [];
+  private filteredActions: CommandAction[] = [];
+  private selectedIndex = 0;
+  private onCommand: CommandCallback;
+
+  constructor(private store: StateStore, onCommand: CommandCallback) {
+    this.onCommand = onCommand;
+
+    // Create palette DOM
+    this.el = document.createElement('div');
+    this.el.id = 'command-palette';
+    this.el.innerHTML = `
+      <div class="cmd-backdrop"></div>
+      <div class="cmd-modal">
+        <div class="cmd-input-wrap">
+          <span class="cmd-icon">&#128269;</span>
+          <input type="text" class="cmd-input" placeholder="Search commands, agents, zones..." />
+          <kbd class="cmd-kbd">ESC</kbd>
+        </div>
+        <div class="cmd-list"></div>
+        <div class="cmd-footer">
+          <span><kbd>&uarr;&darr;</kbd> Navigate</span>
+          <span><kbd>Enter</kbd> Select</span>
+          <span><kbd>Esc</kbd> Close</span>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(this.el);
+
+    this.inputEl = this.el.querySelector('.cmd-input')! as HTMLInputElement;
+    this.listEl = this.el.querySelector('.cmd-list')!;
+
+    // Events
+    this.el.querySelector('.cmd-backdrop')!.addEventListener('click', () => this.close());
+    this.inputEl.addEventListener('input', () => this.onFilter());
+    this.inputEl.addEventListener('keydown', (e) => this.onKeyDown(e));
+
+    // Global shortcut
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        this.toggle();
+      }
+    });
+
+    // Build static actions
+    this.buildActions();
+  }
+
+  private buildActions(): void {
+    this.actions = [];
+
+    // Zone focus commands
+    for (const zone of ZONES) {
+      this.actions.push({
+        id: `zone:${zone.id}`,
+        label: `Go to ${zone.label}`,
+        description: zone.description,
+        icon: zone.icon,
+        category: 'zone',
+        action: () => this.onCommand('focus-zone', zone.id),
+      });
+    }
+
+    // View commands
+    this.actions.push({
+      id: 'view:reset',
+      label: 'Reset Camera',
+      description: 'Fit all zones in view',
+      icon: '🔲',
+      category: 'view',
+      action: () => this.onCommand('reset-camera'),
+    });
+    this.actions.push({
+      id: 'view:zoom-in',
+      label: 'Zoom In',
+      description: 'Zoom into the scene',
+      icon: '🔍',
+      category: 'view',
+      action: () => this.onCommand('zoom-in'),
+    });
+    this.actions.push({
+      id: 'view:zoom-out',
+      label: 'Zoom Out',
+      description: 'Zoom out of the scene',
+      icon: '🔎',
+      category: 'view',
+      action: () => this.onCommand('zoom-out'),
+    });
+
+    // Audio commands
+    this.actions.push({
+      id: 'audio:mute',
+      label: 'Toggle Sound',
+      description: 'Mute or unmute sound effects',
+      icon: '🔊',
+      category: 'audio',
+      action: () => this.onCommand('toggle-mute'),
+    });
+
+    // Feature toggles
+    this.actions.push({
+      id: 'feature:heatmap',
+      label: 'Toggle Heatmap',
+      description: 'Show/hide zone activity heatmap',
+      icon: '🌡',
+      category: 'feature',
+      action: () => this.onCommand('toggle-heatmap'),
+    });
+    this.actions.push({
+      id: 'feature:analytics',
+      label: 'Open Analytics',
+      description: 'Show cost tracker & analytics dashboard',
+      icon: '📊',
+      category: 'feature',
+      action: () => this.onCommand('toggle-analytics'),
+    });
+    this.actions.push({
+      id: 'feature:timeline-live',
+      label: 'Jump to Live',
+      description: 'Return timeline to live mode',
+      icon: '🟢',
+      category: 'feature',
+      action: () => this.onCommand('timeline-live'),
+    });
+  }
+
+  /** Dynamically add agent-specific actions */
+  private getAgentActions(): CommandAction[] {
+    const agents = Array.from(this.store.getAgents().values());
+    return agents.map((agent) => ({
+      id: `agent:${agent.id}`,
+      label: `Focus: ${agent.projectName || agent.sessionId.slice(0, 10)}`,
+      description: `${agent.isIdle ? 'Idle' : 'Active'} in ${ZONE_MAP.get(agent.currentZone)?.label ?? agent.currentZone}`,
+      icon: agent.isIdle ? '💤' : '🤖',
+      category: 'agent' as const,
+      action: () => this.onCommand('focus-agent', agent.id),
+    }));
+  }
+
+  toggle(): void {
+    if (this.isOpen) this.close();
+    else this.open();
+  }
+
+  open(): void {
+    this.isOpen = true;
+    this.el.classList.add('open');
+    this.inputEl.value = '';
+    this.selectedIndex = 0;
+    this.onFilter();
+    // Focus input after animation
+    requestAnimationFrame(() => this.inputEl.focus());
+  }
+
+  close(): void {
+    this.isOpen = false;
+    this.el.classList.remove('open');
+  }
+
+  private onFilter(): void {
+    const query = this.inputEl.value.toLowerCase().trim();
+    const allActions = [...this.actions, ...this.getAgentActions()];
+
+    if (!query) {
+      this.filteredActions = allActions;
+    } else {
+      this.filteredActions = allActions.filter((a) =>
+        a.label.toLowerCase().includes(query) ||
+        a.description.toLowerCase().includes(query) ||
+        a.category.includes(query)
+      );
+    }
+
+    this.selectedIndex = 0;
+    this.renderList();
+  }
+
+  private renderList(): void {
+    if (this.filteredActions.length === 0) {
+      this.listEl.innerHTML = '<div class="cmd-empty">No matching commands</div>';
+      return;
+    }
+
+    this.listEl.innerHTML = this.filteredActions.map((action, i) => {
+      const selected = i === this.selectedIndex ? 'selected' : '';
+      const catClass = `cmd-cat-${action.category}`;
+      return `<div class="cmd-item ${selected} ${catClass}" data-index="${i}">
+        <span class="cmd-item-icon">${action.icon}</span>
+        <div class="cmd-item-text">
+          <div class="cmd-item-label">${this.esc(action.label)}</div>
+          <div class="cmd-item-desc">${this.esc(action.description)}</div>
+        </div>
+        <span class="cmd-item-cat">${action.category}</span>
+      </div>`;
+    }).join('');
+
+    // Click handlers
+    this.listEl.querySelectorAll('.cmd-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        const idx = parseInt((el as HTMLElement).dataset.index!, 10);
+        this.executeAction(idx);
+      });
+      el.addEventListener('mouseenter', () => {
+        this.selectedIndex = parseInt((el as HTMLElement).dataset.index!, 10);
+        this.updateSelection();
+      });
+    });
+  }
+
+  private updateSelection(): void {
+    this.listEl.querySelectorAll('.cmd-item').forEach((el, i) => {
+      el.classList.toggle('selected', i === this.selectedIndex);
+    });
+    // Scroll into view
+    const selected = this.listEl.querySelector('.cmd-item.selected');
+    selected?.scrollIntoView({ block: 'nearest' });
+  }
+
+  private onKeyDown(e: KeyboardEvent): void {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        this.selectedIndex = Math.min(this.selectedIndex + 1, this.filteredActions.length - 1);
+        this.updateSelection();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+        this.updateSelection();
+        break;
+      case 'Enter':
+        e.preventDefault();
+        this.executeAction(this.selectedIndex);
+        break;
+      case 'Escape':
+        e.preventDefault();
+        this.close();
+        break;
+    }
+  }
+
+  private executeAction(index: number): void {
+    const action = this.filteredActions[index];
+    if (action) {
+      this.close();
+      action.action();
+    }
+  }
+
+  private esc(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+}

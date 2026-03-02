@@ -6,6 +6,8 @@ export interface SessionInfo {
   projectPath: string;
   projectName: string;
   isSubagent: boolean;
+  /** The encoded project directory (shared by main + subagents of the same project) */
+  projectDir: string;
 }
 
 class ClaudePaths {
@@ -25,6 +27,7 @@ class ClaudePaths {
         projectPath: 'unknown',
         projectName: 'Unknown',
         isSubagent: false,
+        projectDir: 'unknown',
       };
     }
 
@@ -39,6 +42,7 @@ class ClaudePaths {
       projectPath: encodedProjectName,
       projectName,
       isSubagent,
+      projectDir: encodedProjectName,
     };
   }
 

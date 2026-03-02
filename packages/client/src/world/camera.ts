@@ -104,6 +104,17 @@ export class Camera {
     );
   }
 
+  /** Pan camera to center on a world coordinate */
+  panTo(worldX: number, worldY: number): void {
+    const screenW = this.app.screen.width;
+    const screenH = this.app.screen.height;
+    const sidebarW = 300;
+    const cx = (screenW - sidebarW) / 2;
+    const cy = screenH / 2;
+    this.world.position.x = cx - worldX * this.zoom;
+    this.world.position.y = cy - worldY * this.zoom;
+  }
+
   private zoomBy(factor: number): void {
     const oldZoom = this.zoom;
     const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, this.zoom * factor));

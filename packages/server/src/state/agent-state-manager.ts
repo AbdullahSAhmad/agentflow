@@ -15,6 +15,8 @@ export class AgentStateManager extends EventEmitter {
   private colorCounter = 0;
   private activityHistory = new Map<string, ActivityEntry[]>();
   private timelineBuffer: TimelineEvent[] = [];
+  /** Queue of task descriptions from Agent tool calls, keyed by parent agent ID */
+  private pendingSubagentTasks = new Map<string, string[]>();
 
   getAll(): AgentState[] {
     return Array.from(this.agents.values());
@@ -91,16 +93,20 @@ export class AgentStateManager extends EventEmitter {
 
     if (!agent) {
       // Spawn new agent
+      const parentId = sessionInfo.isSubagent ? this.findParentId(sessionInfo.projectDir) : null;
+      const taskDescription = parentId ? this.popPendingTask(parentId) : null;
       agent = {
         id: sessionId,
         sessionId,
         projectPath: sessionInfo.projectPath,
         projectName: sessionInfo.projectName,
         role: this.determineRole(activity, sessionInfo),
-        parentId: null,
+        parentId,
         teamName: null,
         currentZone: 'spawn',
         currentTool: null,
+        currentActivity: null,
+        taskDescription,
         speechText: null,
         lastActivityAt: now,
         spawnedAt: now,
@@ -129,6 +135,7 @@ export class AgentStateManager extends EventEmitter {
       case 'tool_use': {
         const prevZone = agent.currentZone;
         agent.currentTool = activity.toolName ?? null;
+        agent.currentActivity = this.summarizeToolInput(activity.toolInput) || null;
         agent.currentZone = getZoneForTool(activity.toolName ?? '');
 
         // Detect team-related tools
@@ -138,6 +145,15 @@ export class AgentStateManager extends EventEmitter {
         }
         if (activity.toolName === 'SendMessage') {
           agent.currentZone = 'messaging';
+        }
+
+        // When Agent tool is called, queue the description for the incoming subagent
+        if (activity.toolName === 'Agent' && activity.toolInput) {
+          const input = activity.toolInput as Record<string, unknown>;
+          const desc = (input.description ?? input.prompt ?? '') as string;
+          if (desc) {
+            this.queuePendingTask(sessionId, desc.length > 80 ? desc.slice(0, 77) + '...' : desc);
+          }
         }
 
         // Record tool activity
@@ -163,6 +179,11 @@ export class AgentStateManager extends EventEmitter {
 
       case 'text':
         agent.speechText = activity.text ?? null;
+        agent.currentActivity = activity.text ?? null;
+        // Use first text as task description if not already set
+        if (!agent.taskDescription && activity.text) {
+          agent.taskDescription = activity.text;
+        }
         if (activity.text) {
           this.addHistory(sessionId, {
             timestamp: now,
@@ -197,6 +218,34 @@ export class AgentStateManager extends EventEmitter {
     return 'main';
   }
 
+  /** Find the most likely parent (main agent in same project) for a subagent */
+  private findParentId(projectDir: string): string | null {
+    for (const [id, agent] of this.agents) {
+      if (agent.projectPath === projectDir && agent.role === 'main') {
+        return id;
+      }
+    }
+    // Fallback: first agent with same project path regardless of role
+    for (const [id, agent] of this.agents) {
+      if (agent.projectPath === projectDir && agent.role !== 'subagent') {
+        return id;
+      }
+    }
+    return null;
+  }
+
+  private queuePendingTask(parentId: string, description: string): void {
+    let queue = this.pendingSubagentTasks.get(parentId);
+    if (!queue) { queue = []; this.pendingSubagentTasks.set(parentId, queue); }
+    queue.push(description);
+  }
+
+  private popPendingTask(parentId: string): string | null {
+    const queue = this.pendingSubagentTasks.get(parentId);
+    if (!queue || queue.length === 0) return null;
+    return queue.shift()!;
+  }
+
   private resetIdleTimer(sessionId: string) {
     const existing = this.idleTimers.get(sessionId);
     if (existing) clearTimeout(existing);
@@ -207,6 +256,7 @@ export class AgentStateManager extends EventEmitter {
         agent.isIdle = true;
         agent.currentZone = 'idle';
         agent.currentTool = null;
+        agent.currentActivity = null;
         agent.speechText = null;
         const ts = Date.now();
         this.addHistory(sessionId, { timestamp: ts, kind: 'idle', zone: 'idle' });
