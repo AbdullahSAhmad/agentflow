@@ -1,4 +1,4 @@
-import type { ServerMessage } from '@agentflow/shared';
+import type { ServerMessage, ClientMessage } from '@agentflow/shared';
 import type { StateStore } from './state-store.js';
 
 const MIN_RECONNECT_MS = 1000;
@@ -13,6 +13,13 @@ export class WsClient {
 
   constructor(store: StateStore) {
     this.store = store;
+    this.store.setWsClient(this);
+  }
+
+  send(msg: ClientMessage): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    }
   }
 
   connect(): void {

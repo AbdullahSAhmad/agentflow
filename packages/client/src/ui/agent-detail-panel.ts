@@ -1,0 +1,237 @@
+import type { AgentState, ActivityEntry } from '@agentflow/shared';
+import { AGENT_PALETTES, ZONE_MAP } from '@agentflow/shared';
+import type { StateStore } from '../connection/state-store.js';
+
+/**
+ * Slide-out detail panel for a selected agent.
+ * Shows agent info, model, tokens, and scrolling activity feed.
+ */
+export class AgentDetailPanel {
+  private panelEl: HTMLElement;
+  private store: StateStore;
+  private selectedAgentId: string | null = null;
+  private entries: ActivityEntry[] = [];
+  private historyListener: ((data: { agentId: string; entries: ActivityEntry[] }) => void) | null = null;
+
+  constructor(store: StateStore) {
+    this.store = store;
+
+    // Create panel element
+    this.panelEl = document.createElement('div');
+    this.panelEl.id = 'agent-detail-panel';
+    this.panelEl.innerHTML = `
+      <div class="detail-header">
+        <button id="detail-close">&times;</button>
+        <div id="detail-name"></div>
+        <div id="detail-meta"></div>
+      </div>
+      <div id="detail-stats"></div>
+      <div class="detail-section-title">Activity Feed</div>
+      <div id="detail-feed"></div>
+    `;
+    document.body.appendChild(this.panelEl);
+
+    // Close button
+    this.panelEl.querySelector('#detail-close')!.addEventListener('click', () => this.close());
+
+    // Listen for history responses
+    this.historyListener = (data) => {
+      if (data.agentId === this.selectedAgentId) {
+        this.entries = data.entries;
+        this.renderFeed();
+      }
+    };
+    this.store.on('agent:history', this.historyListener);
+
+    // Live updates for the selected agent
+    this.store.on('agent:update', (agent) => {
+      if (agent.id === this.selectedAgentId) this.renderStats(agent);
+    });
+    this.store.on('agent:idle', (agent) => {
+      if (agent.id === this.selectedAgentId) this.renderStats(agent);
+    });
+    this.store.on('agent:shutdown', (agentId) => {
+      if (agentId === this.selectedAgentId) this.close();
+    });
+  }
+
+  open(agentId: string): void {
+    this.selectedAgentId = agentId;
+    this.entries = [];
+    this.panelEl.classList.add('open');
+
+    const agent = this.store.getAgent(agentId);
+    if (agent) {
+      this.renderHeader(agent);
+      this.renderStats(agent);
+    }
+
+    // Request history from server
+    this.store.requestHistory(agentId);
+  }
+
+  close(): void {
+    this.selectedAgentId = null;
+    this.panelEl.classList.remove('open');
+  }
+
+  isOpen(): boolean {
+    return this.selectedAgentId !== null;
+  }
+
+  get currentAgentId(): string | null {
+    return this.selectedAgentId;
+  }
+
+  private renderHeader(agent: AgentState): void {
+    const palette = AGENT_PALETTES[agent.colorIndex % AGENT_PALETTES.length];
+    const borderColor = '#' + palette.body.toString(16).padStart(6, '0');
+    const name = agent.projectName || agent.sessionId.slice(0, 12);
+
+    const nameEl = this.panelEl.querySelector('#detail-name')!;
+    nameEl.innerHTML = `<span style="color:${borderColor}">\u25CF</span> ${this.esc(name)} <span class="detail-role">${agent.role.toUpperCase()}</span>`;
+
+    const metaEl = this.panelEl.querySelector('#detail-meta')!;
+    metaEl.innerHTML = `
+      <div>Session: <code>${agent.sessionId.slice(0, 16)}...</code></div>
+      ${agent.model ? `<div>Model: <code>${this.esc(agent.model)}</code></div>` : ''}
+      ${agent.teamName ? `<div>Team: ${this.esc(agent.teamName)}</div>` : ''}
+    `;
+  }
+
+  private renderStats(agent: AgentState): void {
+    const zone = ZONE_MAP.get(agent.currentZone);
+    const zoneName = zone ? `${zone.icon} ${zone.label}` : agent.currentZone;
+    const totalTokens = agent.totalInputTokens + agent.totalOutputTokens;
+    const tokensStr = totalTokens >= 1_000_000 ? `${(totalTokens / 1_000_000).toFixed(1)}M`
+      : totalTokens >= 1_000 ? `${(totalTokens / 1_000).toFixed(1)}K`
+      : `${totalTokens}`;
+
+    const statsEl = this.panelEl.querySelector('#detail-stats')!;
+    statsEl.innerHTML = `
+      <div class="stat-row">
+        <span class="stat-label">Zone</span>
+        <span class="stat-value">${zoneName}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Tool</span>
+        <span class="stat-value tool-val">${agent.currentTool ? this.esc(agent.currentTool) : '<span style="color:#666">none</span>'}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Status</span>
+        <span class="stat-value">${agent.isIdle ? '<span style="color:#6b7280">Idle</span>' : '<span style="color:#4ade80">Active</span>'}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Tokens</span>
+        <span class="stat-value">${tokensStr} <span style="color:#666">(${this.formatNum(agent.totalInputTokens)} in / ${this.formatNum(agent.totalOutputTokens)} out)</span></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Uptime</span>
+        <span class="stat-value">${this.formatDuration(Date.now() - agent.spawnedAt)}</span>
+      </div>
+    `;
+  }
+
+  private renderFeed(): void {
+    const feedEl = this.panelEl.querySelector('#detail-feed')!;
+
+    if (this.entries.length === 0) {
+      feedEl.innerHTML = '<div class="feed-empty">No activity recorded yet</div>';
+      return;
+    }
+
+    // Show most recent first
+    const reversed = [...this.entries].reverse();
+    feedEl.innerHTML = reversed.map((e) => this.renderEntry(e)).join('');
+    feedEl.scrollTop = 0;
+  }
+
+  private renderEntry(entry: ActivityEntry): string {
+    const time = this.formatTime(entry.timestamp);
+    const timeHtml = `<span class="feed-time">${time}</span>`;
+
+    switch (entry.kind) {
+      case 'tool':
+        return `<div class="feed-entry feed-tool">
+          ${timeHtml}
+          <span class="feed-icon">&#128295;</span>
+          <span class="feed-tool-name">${this.esc(entry.tool ?? 'unknown')}</span>
+          ${entry.toolArgs ? `<div class="feed-args">${this.esc(entry.toolArgs)}</div>` : ''}
+        </div>`;
+
+      case 'text':
+        return `<div class="feed-entry feed-text">
+          ${timeHtml}
+          <span class="feed-icon">&#128172;</span>
+          <span>${this.esc(entry.text ?? '')}</span>
+        </div>`;
+
+      case 'zone-change': {
+        const from = ZONE_MAP.get(entry.prevZone!);
+        const to = ZONE_MAP.get(entry.zone!);
+        return `<div class="feed-entry feed-zone">
+          ${timeHtml}
+          <span class="feed-icon">&#128694;</span>
+          ${from?.icon ?? ''} ${from?.label ?? entry.prevZone} &rarr; ${to?.icon ?? ''} ${to?.label ?? entry.zone}
+        </div>`;
+      }
+
+      case 'spawn':
+        return `<div class="feed-entry feed-spawn">
+          ${timeHtml}
+          <span class="feed-icon">&#9889;</span>
+          Agent spawned
+        </div>`;
+
+      case 'idle':
+        return `<div class="feed-entry feed-idle">
+          ${timeHtml}
+          <span class="feed-icon">&#9749;</span>
+          Went idle
+        </div>`;
+
+      case 'shutdown':
+        return `<div class="feed-entry feed-shutdown">
+          ${timeHtml}
+          <span class="feed-icon">&#128721;</span>
+          Agent shut down
+        </div>`;
+
+      case 'tokens':
+        return `<div class="feed-entry feed-tokens">
+          ${timeHtml}
+          <span class="feed-icon">&#127916;</span>
+          +${this.formatNum(entry.inputTokens ?? 0)} in / +${this.formatNum(entry.outputTokens ?? 0)} out
+        </div>`;
+
+      default:
+        return '';
+    }
+  }
+
+  private formatTime(ts: number): string {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  private formatNum(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+    return `${n}`;
+  }
+
+  private formatDuration(ms: number): string {
+    const sec = Math.floor(ms / 1000);
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    const remSec = sec % 60;
+    if (min < 60) return `${min}m ${remSec}s`;
+    const hr = Math.floor(min / 60);
+    const remMin = min % 60;
+    return `${hr}h ${remMin}m`;
+  }
+
+  private esc(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+}

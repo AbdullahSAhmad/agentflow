@@ -7,6 +7,11 @@ export class Overlay {
   private agentListEl: HTMLElement;
   private statusEl: HTMLElement;
   private refreshTimer: ReturnType<typeof setInterval>;
+  private onAgentClick: ((agentId: string) => void) | null = null;
+
+  setAgentClickHandler(handler: (agentId: string) => void): void {
+    this.onAgentClick = handler;
+  }
 
   constructor(store: StateStore) {
     this.store = store;
@@ -82,6 +87,14 @@ export class Overlay {
     });
 
     this.agentListEl.innerHTML = agents.map((agent) => this.renderCard(agent)).join('');
+
+    // Attach click handlers
+    this.agentListEl.querySelectorAll('.agent-card[data-agent-id]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = (el as HTMLElement).dataset.agentId;
+        if (id && this.onAgentClick) this.onAgentClick(id);
+      });
+    });
   }
 
   private renderCard(agent: AgentState): string {
@@ -94,7 +107,7 @@ export class Overlay {
     const name = agent.projectName || this.shortenId(agent.sessionId);
     const opacity = agent.isIdle ? '0.6' : '1';
 
-    return `<div class="agent-card" style="border-left: 3px solid ${borderColor}; opacity: ${opacity};">
+    return `<div class="agent-card" data-agent-id="${agent.id}" style="border-left: 3px solid ${borderColor}; opacity: ${opacity};">
       <div class="name">${name}${this.roleBadge(agent.role)}</div>
       <div class="zone">${zone?.icon ?? ''} ${zoneName}</div>
       <div class="tool">Tool: ${toolText}</div>

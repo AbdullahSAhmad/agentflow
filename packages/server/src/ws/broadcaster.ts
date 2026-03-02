@@ -37,6 +37,14 @@ export class Broadcaster {
     };
     ws.send(JSON.stringify(fullState));
 
+    // Send timeline snapshot for replay
+    const timeline: ServerMessage = {
+      type: 'timeline:snapshot',
+      events: this.stateManager.getTimeline(),
+      timestamp: Date.now(),
+    };
+    ws.send(JSON.stringify(timeline));
+
     ws.on('close', () => {
       this.clients.delete(ws);
     });

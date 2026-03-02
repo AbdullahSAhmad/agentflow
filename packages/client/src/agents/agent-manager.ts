@@ -7,6 +7,8 @@ import { AgentSprite } from './agent-sprite.js';
 import { RelationshipLines } from './relationship-lines.js';
 import { ParticleManager } from '../effects/particle-manager.js';
 import { ZoneGlow } from '../effects/zone-glow.js';
+import type { SoundManager } from '../audio/sound-manager.js';
+import type { NotificationManager } from '../audio/notification-manager.js';
 
 interface ManagedAgent {
   sprite: AgentSprite;
@@ -20,6 +22,16 @@ export class AgentManager {
   private lines: RelationshipLines;
   private particles: ParticleManager;
   private zoneGlow: ZoneGlow;
+  private sound: SoundManager | null = null;
+  private notifications: NotificationManager | null = null;
+
+  setSoundManager(sound: SoundManager): void {
+    this.sound = sound;
+  }
+
+  setNotificationManager(notifications: NotificationManager): void {
+    this.notifications = notifications;
+  }
 
   constructor(
     private app: Application,
@@ -57,6 +69,9 @@ export class AgentManager {
     // Move to the agent's current zone
     const target = this.getZonePosition(agent.currentZone, agent.id);
     sprite.moveTo(target.x, target.y);
+
+    this.sound?.play('spawn');
+    this.notifications?.notifySpawn(agent.projectName || agent.id.slice(0, 8));
   }
 
   private onUpdate(agent: AgentState): void {
@@ -66,6 +81,7 @@ export class AgentManager {
       return;
     }
 
+    const prevZone = managed.state.currentZone;
     managed.state = agent;
 
     // Move to new zone with distributed position
@@ -87,6 +103,12 @@ export class AgentManager {
     if (agent.currentTool) {
       const palette = AGENT_PALETTES[agent.colorIndex % AGENT_PALETTES.length];
       this.particles.emit(managed.sprite.container.x, managed.sprite.container.y, palette.body);
+      this.sound?.play('tool-use');
+    }
+
+    // Play zone change sound if zone changed
+    if (prevZone !== agent.currentZone) {
+      this.sound?.play('zone-change');
     }
   }
 
@@ -99,11 +121,17 @@ export class AgentManager {
     managed.sprite.moveTo(target.x, target.y);
     managed.sprite.setIdle(true);
     managed.sprite.setSpeech('');
+
+    this.sound?.play('idle');
+    this.notifications?.notifyIdle(agent.projectName || agent.id.slice(0, 8));
   }
 
   private onShutdown(agentId: string): void {
     const managed = this.agents.get(agentId);
     if (!managed) return;
+
+    this.sound?.play('shutdown');
+    this.notifications?.notifyShutdown(managed.state.projectName || agentId.slice(0, 8));
 
     const spawnPos = this.world.getZoneCenter('spawn');
     managed.sprite.moveTo(spawnPos.x, spawnPos.y);
@@ -116,14 +144,31 @@ export class AgentManager {
   }
 
   private onReset(agents: Map<string, AgentState>): void {
+    this.rebuildFromState(agents);
+  }
+
+  /**
+   * Replace all rendered agents with a new state map.
+   * Used by both state:reset (live) and timeline replay.
+   */
+  rebuildFromState(agents: Map<string, AgentState>): void {
+    // Destroy existing sprites
     for (const [, managed] of this.agents) {
       this.world.removeAgent(managed.sprite.container);
       managed.sprite.destroy();
     }
     this.agents.clear();
 
+    // Spawn all agents from state
     for (const agent of agents.values()) {
       this.onSpawn(agent);
+      // Position immediately (skip walking from spawn)
+      const managed = this.agents.get(agent.id);
+      if (managed) {
+        const target = this.getZonePosition(agent.currentZone, agent.id);
+        managed.sprite.container.position.set(target.x, target.y);
+        managed.sprite.setIdle(agent.isIdle);
+      }
     }
   }
 

@@ -27,3 +27,16 @@ export interface AgentEvent {
   agent: AgentState;
   timestamp: number;
 }
+
+/** A single activity entry in the agent's history feed */
+export interface ActivityEntry {
+  timestamp: number;
+  kind: 'tool' | 'text' | 'zone-change' | 'idle' | 'spawn' | 'shutdown' | 'tokens';
+  zone?: ZoneId;
+  prevZone?: ZoneId;
+  tool?: string;
+  toolArgs?: string; // truncated summary of tool input
+  text?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}

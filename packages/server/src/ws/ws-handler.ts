@@ -4,18 +4,27 @@ import type { Broadcaster } from './broadcaster.js';
 
 export function registerWsHandler(
   app: FastifyInstance,
-  _stateManager: AgentStateManager,
+  stateManager: AgentStateManager,
   broadcaster: Broadcaster
 ) {
   app.get('/ws', { websocket: true }, (socket, _req) => {
     console.log('WebSocket client connected');
     broadcaster.addClient(socket);
 
-    socket.on('message', (data) => {
+    socket.on('message', (data: any) => {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'ping') {
           socket.send(JSON.stringify({ type: 'pong' }));
+        } else if (msg.type === 'request:history') {
+          const agentId = msg.agentId as string;
+          const entries = stateManager.getHistory(agentId);
+          socket.send(JSON.stringify({
+            type: 'agent:history',
+            agentId,
+            entries,
+            timestamp: Date.now(),
+          }));
         }
       } catch {
         // Ignore malformed messages

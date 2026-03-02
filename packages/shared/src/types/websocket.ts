@@ -1,4 +1,4 @@
-import type { AgentState } from './agent.js';
+import type { AgentState, ActivityEntry } from './agent.js';
 
 /** Server → Client messages */
 export type ServerMessage =
@@ -6,7 +6,9 @@ export type ServerMessage =
   | AgentSpawnMessage
   | AgentUpdateMessage
   | AgentIdleMessage
-  | AgentShutdownMessage;
+  | AgentShutdownMessage
+  | AgentHistoryMessage
+  | TimelineSnapshotMessage;
 
 export interface FullStateMessage {
   type: 'full_state';
@@ -38,9 +40,34 @@ export interface AgentShutdownMessage {
   timestamp: number;
 }
 
+export interface AgentHistoryMessage {
+  type: 'agent:history';
+  agentId: string;
+  entries: ActivityEntry[];
+  timestamp: number;
+}
+
+/** Timeline event as stored in the global buffer */
+export interface TimelineEvent {
+  type: 'agent:spawn' | 'agent:update' | 'agent:idle' | 'agent:shutdown';
+  agent: AgentState;
+  timestamp: number;
+}
+
+export interface TimelineSnapshotMessage {
+  type: 'timeline:snapshot';
+  events: TimelineEvent[];
+  timestamp: number;
+}
+
 /** Client → Server messages */
-export type ClientMessage = PingMessage;
+export type ClientMessage = PingMessage | RequestHistoryMessage;
 
 export interface PingMessage {
   type: 'ping';
+}
+
+export interface RequestHistoryMessage {
+  type: 'request:history';
+  agentId: string;
 }
