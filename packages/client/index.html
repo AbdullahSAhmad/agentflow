@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgentMove</title>
+  <title>AgentMove — Live AI Agent Activity Monitor</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="description" content="Watch your AI agents work in real-time with pixel-art visualizations. Monitor Claude Code sessions, tool usage, and agent activity live." />
+  <meta name="theme-color" content="#1a1e38" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -2075,7 +2078,15 @@
         <button id="analytics-btn" title="Analytics (Ctrl+K to search)">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z"/></svg>
         </button>
-        <h2>AgentMove</h2>
+        <h2>
+          <svg class="logo-icon" viewBox="0 0 32 32" width="20" height="20" style="margin-right:6px;vertical-align:-3px;">
+            <defs><linearGradient id="logo-bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#e94560"/><stop offset="100%" style="stop-color:#c23152"/></linearGradient></defs>
+            <rect width="32" height="32" rx="6" fill="url(#logo-bg)"/>
+            <g fill="#fff"><rect x="12" y="5" width="8" height="8" rx="1"/><rect x="14" y="8" width="2" height="2" fill="#1a1e38"/><rect x="18" y="8" width="2" height="2" fill="#1a1e38"/><rect x="13" y="14" width="6" height="7" rx="1"/><rect x="9" y="15" width="4" height="2" rx="1"/><rect x="19" y="15" width="4" height="2" rx="1"/><rect x="13" y="22" width="2" height="4" rx="1"/><rect x="17" y="22" width="2" height="4" rx="1"/></g>
+            <path d="M24 22 L27 25 L24 28" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+          </svg>
+          AgentMove
+        </h2>
         <div class="sidebar-actions">
           <button id="cmd-hint" title="Command Palette (Ctrl+K)">&#8984;K</button>
         </div>
