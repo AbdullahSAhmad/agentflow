@@ -4,6 +4,10 @@
   "description": "Watch your AI coding agents come alive as pixel-art characters in a 2D world",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AbdullahSAhmad/agent-move"
+  },
   "bin": {
     "agent-move": "bin/cli.js"
   },
