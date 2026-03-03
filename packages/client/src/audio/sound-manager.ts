@@ -10,6 +10,8 @@ export class SoundManager {
   private _volume = 0.3;
   private _muted = false;
   private initialized = false;
+  private lastToolUseTime = 0;
+  private static TOOL_USE_COOLDOWN = 300; // ms between tool-use sounds
 
   get volume(): number {
     return this._volume;
@@ -65,9 +67,13 @@ export class SoundManager {
       case 'zone-change':
         this.playZoneChange(ctx);
         break;
-      case 'tool-use':
+      case 'tool-use': {
+        const now2 = performance.now();
+        if (now2 - this.lastToolUseTime < SoundManager.TOOL_USE_COOLDOWN) return;
+        this.lastToolUseTime = now2;
         this.playToolUse(ctx);
         break;
+      }
       case 'idle':
         this.playIdle(ctx);
         break;
@@ -114,32 +120,22 @@ export class SoundManager {
     osc.stop(now + 0.2);
   }
 
-  /** Tiny keyboard click — agent uses a tool */
+  /** Soft tap — agent uses a tool */
   private playToolUse(ctx: AudioContext): void {
     const now = ctx.currentTime;
-    const vol = this.gain() * 0.08;
+    const vol = this.gain() * 0.06;
 
-    // Short noise burst like a keypress
-    const bufferSize = ctx.sampleRate * 0.03;
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
-    }
-
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.value = 2000;
-
+    // Gentle sine tap instead of noise burst
+    const osc = ctx.createOscillator();
     const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(600, now + 0.06);
     g.gain.setValueAtTime(vol, now);
-    g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-
-    source.connect(filter).connect(g).connect(ctx.destination);
-    source.start(now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
   }
 
   /** Soft descending tone — agent goes idle */

@@ -333,14 +333,18 @@ export class AgentManager {
     }
     this.agents.clear();
 
-    // Spawn all agents from state
+    // Spawn all agents from state (silently, no animations/sounds)
+    const prevSound = this.sound;
+    this.sound = null; // suppress sounds during rebuild
     for (const agent of agents.values()) {
       this.onSpawn(agent);
-      // Position immediately (skip walking from spawn)
+      // Position immediately (skip walking and spawn animation)
       const managed = this.agents.get(agent.id);
       if (managed) {
         const target = this.getZonePosition(agent.currentZone, agent.id);
         managed.sprite.container.position.set(target.x, target.y);
+        managed.sprite.spawnAnimTimer = 0;
+        managed.sprite.container.scale.set(1);
         managed.sprite.setIdle(agent.isIdle);
         if (agent.isDone) {
           managed.sprite.setDone(true);
@@ -348,6 +352,7 @@ export class AgentManager {
         }
       }
     }
+    this.sound = prevSound;
   }
 
   /**

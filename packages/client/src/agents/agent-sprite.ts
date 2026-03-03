@@ -528,10 +528,15 @@ export class AgentSprite {
     // Spawn animation (scale up)
     if (this.spawnAnimTimer > 0) {
       this.spawnAnimTimer -= dt;
-      const t = 1 - Math.max(0, this.spawnAnimTimer / AgentSprite.SPAWN_ANIM_DURATION);
-      // Elastic ease out
-      const scale = 1 - Math.pow(2, -8 * t) * Math.cos(t * Math.PI * 3);
-      this.container.scale.set(Math.max(0.3, scale));
+      if (this.spawnAnimTimer <= 0) {
+        this.spawnAnimTimer = 0;
+        this.container.scale.set(1);
+      } else {
+        const t = 1 - this.spawnAnimTimer / AgentSprite.SPAWN_ANIM_DURATION;
+        // Elastic ease out
+        const scale = 1 - Math.pow(2, -8 * t) * Math.cos(t * Math.PI * 3);
+        this.container.scale.set(Math.max(0.3, Math.min(1, scale)));
+      }
     }
 
     // Handle fade out
