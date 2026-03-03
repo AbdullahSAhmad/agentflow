@@ -46,7 +46,10 @@ export async function main() {
 
   // Start file watcher
   const watcher = new FileWatcher(config.claudeHome, stateManager);
-  watcher.start(existingSessions);
+  await watcher.start(existingSessions);
+
+  // Flush stale pending queues from replay — only real-time Agent tool calls should name subagents
+  stateManager.flushPendingQueues();
 
   // Try preferred port, then increment up to 10 times on conflict
   let actualPort = config.port;

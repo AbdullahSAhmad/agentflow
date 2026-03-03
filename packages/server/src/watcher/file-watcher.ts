@@ -15,10 +15,11 @@ export class FileWatcher {
     private stateManager: AgentStateManager
   ) {}
 
-  start(existingFiles: string[]) {
-    // Process existing files first
+  async start(existingFiles: string[]) {
+    // Process existing files sequentially — main session must be processed
+    // before subagent files so parent relationships resolve correctly
     for (const file of existingFiles) {
-      this.processFile(file);
+      await this.processFile(file);
     }
 
     const pattern = join(this.claudeHome, 'projects', '**', '*.jsonl');

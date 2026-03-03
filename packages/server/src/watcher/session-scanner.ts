@@ -21,17 +21,30 @@ export class SessionScanner {
           if (!projectStat.isDirectory()) continue;
 
           const files = await readdir(projectDir);
+
+          // Find the most recently modified main session (top-level JSONL)
+          let newestFile: string | null = null;
+          let newestMtime = 0;
+
           for (const file of files) {
             if (!file.endsWith('.jsonl')) continue;
             const filePath = join(projectDir, file);
             try {
               const fileStat = await stat(filePath);
               if (now - fileStat.mtimeMs < config.activeThresholdMs) {
-                results.push(filePath);
+                // Only keep the most recent main session per project
+                if (fileStat.mtimeMs > newestMtime) {
+                  newestMtime = fileStat.mtimeMs;
+                  newestFile = filePath;
+                }
               }
             } catch {
               // Skip files we can't stat
             }
+          }
+
+          if (newestFile) {
+            results.push(newestFile);
           }
         } catch {
           // Skip directories we can't read

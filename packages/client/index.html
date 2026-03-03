@@ -202,6 +202,101 @@
       margin-left: 6px;
       white-space: nowrap;
     }
+
+    /* Collapsible group containers (teams) */
+    .agent-group {
+      margin-bottom: 4px;
+    }
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      border-radius: 8px;
+      color: #ddd;
+      font-size: 12px;
+      font-weight: 600;
+      user-select: none;
+      transition: background 0.15s, border-color 0.15s;
+      border: 1px solid rgba(38, 198, 218, 0.12);
+      border-left: 3px solid rgba(38, 198, 218, 0.4);
+      background: rgba(38, 198, 218, 0.04);
+      margin-bottom: 3px;
+    }
+    .group-header:hover {
+      background: rgba(38, 198, 218, 0.1);
+      border-color: rgba(38, 198, 218, 0.25);
+      border-left-color: rgba(38, 198, 218, 0.6);
+    }
+    .group-chevron {
+      font-size: 11px;
+      color: #26c6da;
+      width: 12px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .group-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .group-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #e0e0e0;
+    }
+    .group-count {
+      background: rgba(38, 198, 218, 0.15);
+      color: #26c6da;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 8px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .group-children {
+      padding-left: 14px;
+      margin-left: 8px;
+      border-left: 2px solid rgba(38, 198, 218, 0.1);
+    }
+
+    /* Subagent collapse bar (separate clickable strip below parent card) */
+    .sub-collapse-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      margin: -4px 0 4px 3px;
+      cursor: pointer;
+      border-radius: 0 0 8px 8px;
+      color: #ab47bc;
+      font-size: 11px;
+      font-weight: 500;
+      user-select: none;
+      transition: background 0.15s, color 0.15s;
+      background: rgba(171, 71, 188, 0.05);
+      border: 1px solid rgba(171, 71, 188, 0.1);
+      border-top: none;
+    }
+    .sub-collapse-bar:hover {
+      background: rgba(171, 71, 188, 0.14);
+      color: #ce93d8;
+    }
+    .sub-collapse-bar.is-collapsed {
+      border-radius: 0 0 8px 8px;
+      margin-bottom: 6px;
+    }
+    .sub-collapse-chevron {
+      font-size: 10px;
+      width: 12px;
+      text-align: center;
+    }
+    .sub-collapse-label {
+      letter-spacing: 0.02em;
+    }
+
     #overlay .agent-card .zone {
       color: #999;
       font-size: 12px;

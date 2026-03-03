@@ -42,6 +42,19 @@ export class AgentStateManager extends EventEmitter {
     return this.agents.get(id);
   }
 
+  /** Flush pending name/task queues — call after initial replay to prevent stale matches */
+  flushPendingQueues(): void {
+    const nameCount = Array.from(this.pendingSubagentNames.values()).reduce((n, q) => n + q.length, 0);
+    const taskCount = Array.from(this.pendingSubagentTasks.values()).reduce((n, q) => n + q.length, 0);
+    const recipientCount = Array.from(this.pendingRecipients.values()).reduce((n, q) => n + q.length, 0);
+    this.pendingSubagentNames.clear();
+    this.pendingSubagentTasks.clear();
+    this.pendingRecipients.clear();
+    if (nameCount + taskCount + recipientCount > 0) {
+      console.log(`Flushed ${nameCount} pending names, ${taskCount} pending tasks, ${recipientCount} pending recipients from replay`);
+    }
+  }
+
   getHistory(agentId: string): ActivityEntry[] {
     return this.activityHistory.get(agentId) ?? [];
   }
@@ -219,6 +232,7 @@ export class AgentStateManager extends EventEmitter {
         // No existing agent with this name — register and promote
         agent.agentName = discoveredName;
         agent.role = 'team-member';
+        agent.teamName = agent.teamName || this.getParentTeamName(sessionInfo.projectDir);
         this.namedAgentMap.set(`${sessionInfo.projectDir}:${discoveredName}`, canonicalId);
         this.promoteAgent(canonicalId);
         this.applyActivity(agent, activity, now, sessionInfo);
@@ -274,13 +288,19 @@ export class AgentStateManager extends EventEmitter {
       // No conflict — just register the name
       agent.agentName = activity.agentName;
       agent.role = 'team-member';
+      agent.teamName = agent.teamName || this.getParentTeamName(sessionInfo.projectDir);
       this.namedAgentMap.set(key, canonicalId);
       console.log(`Agent ${canonicalId.slice(0, 12)}… identified as "${activity.agentName}"`);
     }
 
     // --- Handle new session ---
     if (!agent) {
-      const parentId = sessionInfo.isSubagent ? this.findParentId(sessionInfo.projectDir) : null;
+      // Use parentSessionId from path when available (precise), fallback to project-wide search
+      const parentId = sessionInfo.isSubagent
+        ? (sessionInfo.parentSessionId
+            ? this.resolveAgentId(sessionInfo.parentSessionId)
+            : this.findParentId(sessionInfo.projectDir))
+        : null;
       const taskDescription = parentId ? this.popPendingTask(parentId) : null;
       // Try multiple sources for agent name: pending queue, routing sender, message recipient matching
       let agentName = (parentId ? this.popPendingName(parentId) : null) ?? activity.agentName ?? null;
@@ -315,7 +335,7 @@ export class AgentStateManager extends EventEmitter {
         agentName,
         role: agentName ? 'team-member' : this.determineRole(activity, sessionInfo),
         parentId,
-        teamName: null,
+        teamName: agentName ? this.getParentTeamName(sessionInfo.projectDir) : null,
         currentZone: 'spawn',
         currentTool: null,
         currentActivity: null,
@@ -428,6 +448,12 @@ export class AgentStateManager extends EventEmitter {
         if (activity.toolName === 'TeamCreate' && activity.toolInput) {
           agent.teamName = (activity.toolInput as Record<string, unknown>).team_name as string ?? null;
           agent.role = 'team-lead';
+          // Register as "team-lead" so message-handling sessions merge into this agent
+          // instead of creating a duplicate "team-lead" member
+          if (!agent.agentName) {
+            agent.agentName = 'team-lead';
+          }
+          this.namedAgentMap.set(`${agent.projectPath}:team-lead`, agentId);
         }
         if (activity.toolName === 'SendMessage') {
           agent.currentZone = 'messaging';
@@ -508,19 +534,37 @@ export class AgentStateManager extends EventEmitter {
     }
   }
 
+  /** Inherit teamName from parent agent (for team members) */
+  private getParentTeamName(projectDir: string): string | null {
+    for (const agent of this.agents.values()) {
+      if (agent.projectPath === projectDir && agent.teamName) {
+        return agent.teamName;
+      }
+    }
+    return null;
+  }
+
   private determineRole(_activity: ParsedActivity, sessionInfo: SessionInfo): AgentState['role'] {
     if (sessionInfo.isSubagent) return 'subagent';
     return 'main';
   }
 
   private findParentId(projectDir: string): string | null {
+    // Priority 1: team-lead (the designated orchestrator for team scenarios)
+    for (const [id, agent] of this.agents) {
+      if (agent.projectPath === projectDir && agent.role === 'team-lead') {
+        return id;
+      }
+    }
+    // Priority 2: main session
     for (const [id, agent] of this.agents) {
       if (agent.projectPath === projectDir && agent.role === 'main') {
         return id;
       }
     }
+    // Priority 3: any non-leaf agent (fallback)
     for (const [id, agent] of this.agents) {
-      if (agent.projectPath === projectDir && agent.role !== 'subagent') {
+      if (agent.projectPath === projectDir && agent.role !== 'subagent' && agent.role !== 'team-member') {
         return id;
       }
     }

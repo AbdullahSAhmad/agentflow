@@ -18,6 +18,7 @@ export class Overlay {
   private refreshTimer: ReturnType<typeof setInterval>;
   private onAgentClick: ((agentId: string) => void) | null = null;
   private currentFilter: FilterMode = 'all';
+  private collapsedGroups = new Set<string>();
 
   // Sparkline data: per-agent rolling token history (sampled every 2s, last 30 samples = 1min)
   private tokenHistory = new Map<string, TokenHistory>();
@@ -71,6 +72,15 @@ export class Overlay {
     for (const id of this.tokenHistory.keys()) {
       if (!agents.has(id)) this.tokenHistory.delete(id);
     }
+  }
+
+  private toggleGroup(groupId: string): void {
+    if (this.collapsedGroups.has(groupId)) {
+      this.collapsedGroups.delete(groupId);
+    } else {
+      this.collapsedGroups.add(groupId);
+    }
+    this.renderAgents();
   }
 
   private renderFilters(): void {
@@ -190,18 +200,18 @@ export class Overlay {
       return a.spawnedAt - b.spawnedAt;
     });
 
-    // Build parent-child tree: render subagents nested under parent
     const allAgentsMap = this.store.getAgents();
-    const parentAgents = agents.filter(a => a.role !== 'subagent');
+
+    // Separate subagents from others
     const subAgents = agents.filter(a => a.role === 'subagent');
+    const nonSubAgents = agents.filter(a => a.role !== 'subagent');
     const orphanSubs: AgentState[] = [];
 
-    // Map parentId -> subagents that are in the filtered list
-    // Only nest under parent if the parent is also in the filtered results
-    const filteredParentIds = new Set(parentAgents.map(a => a.id));
+    // Map parentId -> subagents in filtered list (only nest if parent is visible)
+    const filteredNonSubIds = new Set(nonSubAgents.map(a => a.id));
     const childrenOf = new Map<string, AgentState[]>();
     for (const sub of subAgents) {
-      if (sub.parentId && filteredParentIds.has(sub.parentId)) {
+      if (sub.parentId && filteredNonSubIds.has(sub.parentId)) {
         let list = childrenOf.get(sub.parentId);
         if (!list) { list = []; childrenOf.set(sub.parentId, list); }
         list.push(sub);
@@ -210,27 +220,71 @@ export class Overlay {
       }
     }
 
-    // Count all subagents per parent (from full agent list, not just filtered)
-    const subCountOf = new Map<string, number>();
+    // Count actual subagents per parent (exclude team members who share parentId)
+    const totalSubCountOf = new Map<string, number>();
     for (const a of allAgentsMap.values()) {
-      if (a.parentId) {
-        subCountOf.set(a.parentId, (subCountOf.get(a.parentId) ?? 0) + 1);
+      if (a.parentId && a.role === 'subagent') {
+        totalSubCountOf.set(a.parentId, (totalSubCountOf.get(a.parentId) ?? 0) + 1);
       }
     }
 
-    // Render tree: parent card, then indented children
+    // Group non-subagents by teamName
+    const teamGroups = new Map<string, AgentState[]>();
+    const standalone: AgentState[] = [];
+    for (const agent of nonSubAgents) {
+      if (agent.teamName) {
+        let list = teamGroups.get(agent.teamName);
+        if (!list) { list = []; teamGroups.set(agent.teamName, list); }
+        list.push(agent);
+      } else {
+        standalone.push(agent);
+      }
+    }
+
     let html = '';
-    for (const parent of parentAgents) {
-      html += this.renderCard(parent, false, subCountOf.get(parent.id) ?? 0);
-      const children = childrenOf.get(parent.id);
-      if (children && children.length > 0) {
-        html += `<div class="subagent-group">`;
-        for (const child of children) {
-          html += this.renderCard(child, true);
+
+    // Render team groups
+    for (const [teamName, members] of teamGroups) {
+      // Sort: lead first, then by spawn time
+      members.sort((a, b) => {
+        if (a.role === 'team-lead' && b.role !== 'team-lead') return -1;
+        if (a.role !== 'team-lead' && b.role === 'team-lead') return 1;
+        return 0;
+      });
+
+      // Count total team members from full state
+      let totalTeamCount = 0;
+      for (const a of allAgentsMap.values()) {
+        if (a.teamName === teamName) totalTeamCount++;
+      }
+
+      const groupId = `team:${teamName}`;
+      const isCollapsed = this.collapsedGroups.has(groupId);
+
+      html += `<div class="agent-group${isCollapsed ? ' collapsed' : ''}">`;
+      html += `<div class="group-header" data-group-id="${escapeAttr(groupId)}">
+        <span class="group-chevron">${isCollapsed ? '&#9656;' : '&#9662;'}</span>
+        <span class="group-icon">&#128101;</span>
+        <span class="group-name">${escapeHtml(teamName)}</span>
+        <span class="group-count">${totalTeamCount}</span>
+      </div>`;
+
+      if (!isCollapsed) {
+        html += `<div class="group-children">`;
+        for (const member of members) {
+          html += this.renderAgentWithSubs(member, childrenOf, totalSubCountOf);
         }
         html += `</div>`;
       }
+
+      html += `</div>`;
     }
+
+    // Render standalone agents
+    for (const agent of standalone) {
+      html += this.renderAgentWithSubs(agent, childrenOf, totalSubCountOf);
+    }
+
     // Orphan subagents (parent not visible or not found)
     for (const orphan of orphanSubs) {
       html += this.renderCard(orphan, true);
@@ -238,7 +292,23 @@ export class Overlay {
 
     this.agentListEl.innerHTML = html;
 
-    // Attach click handlers
+    // Bind group header toggle handlers
+    this.agentListEl.querySelectorAll('.group-header').forEach(el => {
+      el.addEventListener('click', () => {
+        const groupId = (el as HTMLElement).dataset.groupId;
+        if (groupId) this.toggleGroup(groupId);
+      });
+    });
+
+    // Bind sub-collapse-bar handlers (separate toggle bar below parent cards)
+    this.agentListEl.querySelectorAll('.sub-collapse-bar').forEach(el => {
+      el.addEventListener('click', () => {
+        const groupId = (el as HTMLElement).dataset.groupId;
+        if (groupId) this.toggleGroup(groupId);
+      });
+    });
+
+    // Attach card click handlers
     this.agentListEl.querySelectorAll('.agent-card[data-agent-id]').forEach((el) => {
       el.addEventListener('click', () => {
         const id = (el as HTMLElement).dataset.agentId;
@@ -262,6 +332,48 @@ export class Overlay {
     });
   }
 
+  /** Render an agent card with its collapsible subagent children */
+  private renderAgentWithSubs(
+    agent: AgentState,
+    childrenOf: Map<string, AgentState[]>,
+    totalSubCountOf: Map<string, number>,
+    isChild = false,
+  ): string {
+    const children = childrenOf.get(agent.id);
+    const subCount = totalSubCountOf.get(agent.id) ?? 0;
+    const hasVisibleChildren = children && children.length > 0;
+
+    let html = '';
+
+    if (hasVisibleChildren) {
+      const groupId = `sub:${agent.id}`;
+      const isCollapsed = this.collapsedGroups.has(groupId);
+
+      // Don't show sub badge on card — the collapse bar handles the count
+      html += this.renderCard(agent, isChild, 0);
+
+      // Separate clickable collapse bar below the card
+      const chevron = isCollapsed ? '&#9656;' : '&#9662;';
+      const label = `${subCount} subagent${subCount > 1 ? 's' : ''}`;
+      html += `<div class="sub-collapse-bar${isCollapsed ? ' is-collapsed' : ''}" data-group-id="${escapeAttr(groupId)}">
+        <span class="sub-collapse-chevron">${chevron}</span>
+        <span class="sub-collapse-label">${label}</span>
+      </div>`;
+
+      if (!isCollapsed) {
+        html += `<div class="subagent-group">`;
+        for (const child of children) {
+          html += this.renderAgentWithSubs(child, childrenOf, totalSubCountOf, true);
+        }
+        html += `</div>`;
+      }
+    } else {
+      html += this.renderCard(agent, isChild, subCount);
+    }
+
+    return html;
+  }
+
   private renderCard(agent: AgentState, isChild = false, subCount = 0): string {
     const palette = AGENT_PALETTES[agent.colorIndex % AGENT_PALETTES.length];
     const borderColor = hexToCss(palette.body);
@@ -273,8 +385,8 @@ export class Overlay {
     const opacity = agent.isDone ? '0.4' : agent.isIdle ? '0.6' : '1';
     const childClass = isChild ? ' agent-card-child' : '';
     const doneClass = agent.isDone ? ' agent-card-done' : '';
-    const subBadge = subCount > 0 ? `<span class="sub-count" title="${subCount} subagent${subCount > 1 ? 's' : ''}">${subCount} sub${subCount > 1 ? 's' : ''}</span>` : '';
     const doneBadge = agent.isDone ? '<span style="background:#66666633;color:#888;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;margin-left:6px;">DONE</span>' : '';
+    const subBadge = subCount > 0 ? `<span class="sub-count" title="${subCount} subagent${subCount > 1 ? 's' : ''}">${subCount} sub${subCount > 1 ? 's' : ''}</span>` : '';
 
     return `<div class="agent-card${childClass}${doneClass}" data-agent-id="${agent.id}" style="border-left: 3px solid ${borderColor}; opacity: ${opacity};">
       <div class="card-top-row">

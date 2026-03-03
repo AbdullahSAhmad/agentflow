@@ -8,6 +8,8 @@ export interface SessionInfo {
   isSubagent: boolean;
   /** The encoded project directory (shared by main + subagents of the same project) */
   projectDir: string;
+  /** The parent session ID extracted from the path (for subagents) */
+  parentSessionId: string | null;
 }
 
 class ClaudePaths {
@@ -28,6 +30,7 @@ class ClaudePaths {
         projectName: 'Unknown',
         isSubagent: false,
         projectDir: 'unknown',
+        parentSessionId: null,
       };
     }
 
@@ -35,14 +38,20 @@ class ClaudePaths {
     const projectName = this.decodeProjectName(encodedProjectName);
 
     // Check depth — if there are extra directories between project and the JSONL, it's a subagent
+    // Path: {projects}/{encoded-project}/{parent-session-id}/subagents/{agent-session-id}.jsonl
     const depthAfterProject = parts.length - projectsIdx - 2;
     const isSubagent = depthAfterProject > 1;
+
+    // Extract parent session ID from path for subagents
+    // parts[projectsIdx + 2] is the parent session directory name
+    const parentSessionId = isSubagent ? parts[projectsIdx + 2] : null;
 
     return {
       projectPath: encodedProjectName,
       projectName,
       isSubagent,
       projectDir: encodedProjectName,
+      parentSessionId,
     };
   }
 
