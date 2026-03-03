@@ -421,6 +421,44 @@ export class AgentManager {
     return this._focusedAgentId;
   }
 
+  /** Get display name of the focused agent */
+  getFocusedAgentName(): string | null {
+    if (!this._focusedAgentId) return null;
+    const managed = this.agents.get(this._focusedAgentId);
+    if (!managed) return null;
+    return managed.state.projectName || managed.state.sessionId.slice(0, 10);
+  }
+
+  /** Get ordered list of active (non-idle, non-done) agent IDs */
+  getActiveAgentIds(): string[] {
+    const ids: string[] = [];
+    for (const [id, managed] of this.agents) {
+      if (!managed.state.isIdle && !managed.state.isDone) ids.push(id);
+    }
+    // If no active agents, include idle ones
+    if (ids.length === 0) {
+      for (const [id] of this.agents) ids.push(id);
+    }
+    return ids.sort();
+  }
+
+  /**
+   * Cycle focus to the next agent. If none focused, picks the first active agent.
+   * Returns the newly focused agent ID, or null if no agents exist.
+   */
+  cycleNextAgent(): string | null {
+    const ids = this.getActiveAgentIds();
+    if (ids.length === 0) return null;
+
+    if (!this._focusedAgentId || !ids.includes(this._focusedAgentId)) {
+      this._focusedAgentId = ids[0];
+    } else {
+      const idx = ids.indexOf(this._focusedAgentId);
+      this._focusedAgentId = ids[(idx + 1) % ids.length];
+    }
+    return this._focusedAgentId;
+  }
+
   /** Get world position of the focused agent (if any) */
   getFocusedAgentPosition(): { x: number; y: number } | null {
     if (!this._focusedAgentId) return null;

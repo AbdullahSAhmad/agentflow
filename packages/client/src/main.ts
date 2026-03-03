@@ -52,7 +52,12 @@ async function main() {
 
   // Init detail panel
   const detailPanel = new AgentDetailPanel(store);
-  overlay.setAgentClickHandler((agentId) => detailPanel.open(agentId));
+  overlay.setAgentClickHandler((agentId) => {
+    detailPanel.open(agentId);
+    agentManager.setFocusAgent(agentId);
+    focusModeActive = true;
+    updateFocusIndicator();
+  });
 
   // Init timeline
   const timeline = new Timeline(store);
@@ -85,6 +90,22 @@ async function main() {
   // ── Focus Mode ──
   let focusModeActive = false;
 
+  // Focus indicator badge
+  const focusIndicator = document.createElement('div');
+  focusIndicator.id = 'focus-indicator';
+  focusIndicator.innerHTML = `<span class="fi-icon">&#127919;</span> Following: <span class="fi-name"></span><span class="fi-hint">F to cycle &middot; Esc to exit</span>`;
+  document.getElementById('app')!.appendChild(focusIndicator);
+
+  function updateFocusIndicator(): void {
+    if (focusModeActive && agentManager.focusedAgentId) {
+      const name = agentManager.getFocusedAgentName() || 'Agent';
+      focusIndicator.querySelector('.fi-name')!.textContent = name;
+      focusIndicator.classList.add('visible');
+    } else {
+      focusIndicator.classList.remove('visible');
+    }
+  }
+
   // ── Feature 2: Command Palette ──
   const commandPalette = new CommandPalette(store, (action, payload) => {
     switch (action) {
@@ -100,9 +121,9 @@ async function main() {
       }
       case 'focus-agent': {
         detailPanel.open(payload);
-        // Also activate focus mode on this agent
         agentManager.setFocusAgent(payload);
         focusModeActive = true;
+        updateFocusIndicator();
         break;
       }
       case 'reset-camera':
@@ -135,8 +156,14 @@ async function main() {
         shortcutsHelp.toggle();
         break;
       case 'toggle-focus':
-        focusModeActive = !focusModeActive;
-        if (!focusModeActive) agentManager.setFocusAgent(null);
+        if (focusModeActive) {
+          focusModeActive = false;
+          agentManager.setFocusAgent(null);
+        } else {
+          agentManager.cycleNextAgent();
+          focusModeActive = !!agentManager.focusedAgentId;
+        }
+        updateFocusIndicator();
         break;
       case 'session-export':
         sessionExport.toggle();
@@ -214,8 +241,19 @@ async function main() {
         muteBtn.classList.toggle('muted', sound.muted);
         break;
       case 'f':
-        focusModeActive = !focusModeActive;
-        if (!focusModeActive) agentManager.setFocusAgent(null);
+        if (!focusModeActive) {
+          // First press: activate and pick first active agent
+          agentManager.cycleNextAgent();
+          focusModeActive = !!agentManager.focusedAgentId;
+        } else {
+          // Subsequent presses: cycle to next agent
+          const next = agentManager.cycleNextAgent();
+          if (!next) {
+            focusModeActive = false;
+            agentManager.setFocusAgent(null);
+          }
+        }
+        updateFocusIndicator();
         break;
       case 'e':
         sessionExport.toggle();
@@ -225,6 +263,7 @@ async function main() {
         if (focusModeActive) {
           focusModeActive = false;
           agentManager.setFocusAgent(null);
+          updateFocusIndicator();
         }
         break;
     }

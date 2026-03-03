@@ -38,7 +38,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Camera & Focus',
     shortcuts: [
-      { keys: 'F', description: 'Toggle focus mode (follow agent)' },
+      { keys: 'F', description: 'Focus / cycle to next agent' },
       { keys: 'Esc', description: 'Exit focus mode' },
     ],
   },
