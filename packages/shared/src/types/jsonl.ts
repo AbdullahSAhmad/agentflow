@@ -15,6 +15,16 @@ export interface JsonlMessage {
   /** Tool result content */
   tool_use_id?: string;
   content?: string | ContentBlock[];
+  /** Tool use result with routing info (present on user messages after SendMessage) */
+  toolUseResult?: {
+    success?: boolean;
+    routing?: {
+      sender?: string;
+      senderColor?: string;
+      target?: string;
+      targetColor?: string;
+    };
+  };
 }
 
 export interface AssistantMessage {

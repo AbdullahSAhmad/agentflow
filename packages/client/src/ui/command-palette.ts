@@ -183,7 +183,7 @@ export class CommandPalette {
     const agents = Array.from(this.store.getAgents().values());
     return agents.map((agent) => ({
       id: `agent:${agent.id}`,
-      label: `Focus: ${agent.projectName || agent.sessionId.slice(0, 10)}`,
+      label: `Focus: ${agent.agentName || agent.projectName || agent.sessionId.slice(0, 10)}`,
       description: `${agent.isIdle ? 'Idle' : 'Active'} in ${ZONE_MAP.get(agent.currentZone)?.label ?? agent.currentZone}`,
       icon: agent.isIdle ? '💤' : '🤖',
       category: 'agent' as const,

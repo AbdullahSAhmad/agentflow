@@ -119,7 +119,7 @@ export class AnalyticsPanel {
   private getSnapshots(): AgentSnapshot[] {
     return Array.from(this.store.getAgents().values()).map((a) => ({
       id: a.id,
-      name: a.projectName || a.sessionId.slice(0, 10),
+      name: a.agentName || a.projectName || a.sessionId.slice(0, 10),
       model: a.model,
       inputTokens: a.totalInputTokens,
       outputTokens: a.totalOutputTokens,

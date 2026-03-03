@@ -36,7 +36,7 @@ export class ToastManager {
   }
 
   private getName(agent: AgentState): string {
-    return agent.projectName || agent.sessionId.slice(0, 10);
+    return agent.agentName || agent.projectName || agent.sessionId.slice(0, 10);
   }
 
   private getColor(agent: AgentState): string {

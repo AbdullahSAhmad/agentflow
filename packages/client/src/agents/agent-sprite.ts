@@ -167,7 +167,7 @@ export class AgentSprite {
     this.container.addChild(this.sprite);
 
     // Name label below sprite
-    const rawName = agent.projectName || agent.id.slice(0, 8);
+    const rawName = agent.agentName || agent.projectName || agent.id.slice(0, 8);
     const name = rawName.length > 14 ? rawName.slice(0, 12) + '..' : rawName;
     const labelStyle = new TextStyle({
       fontSize: 13,
@@ -340,6 +340,15 @@ export class AgentSprite {
   }
 
   /** Set idle visual state */
+  /** Update the displayed name label (e.g. when agentName is discovered after spawn) */
+  updateName(agent: AgentState): void {
+    const rawName = agent.agentName || agent.projectName || agent.id.slice(0, 8);
+    const name = rawName.length > 14 ? rawName.slice(0, 12) + '..' : rawName;
+    if (this.nameLabel.text !== name) {
+      this.nameLabel.text = name;
+    }
+  }
+
   setIdle(idle: boolean): void {
     if (idle && !this.isIdleState) {
       this.idleTimer = 0; // reset timer on fresh idle transition

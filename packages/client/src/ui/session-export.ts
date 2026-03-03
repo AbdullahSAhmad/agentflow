@@ -87,7 +87,7 @@ export class SessionExport {
 
       const zone = ZONE_MAP.get(a.currentZone);
       agentStats.push({
-        name: a.projectName || a.sessionId.slice(0, 10),
+        name: a.agentName || a.projectName || a.sessionId.slice(0, 10),
         cost,
         tokens: a.totalInputTokens + a.totalOutputTokens,
         duration: now - a.spawnedAt,

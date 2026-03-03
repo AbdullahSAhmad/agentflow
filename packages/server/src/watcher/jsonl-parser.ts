@@ -11,6 +11,10 @@ export interface ParsedActivity {
   cacheCreationTokens?: number;
   model?: string;
   sessionId?: string;
+  /** Logical agent name discovered from SendMessage routing */
+  agentName?: string;
+  /** Sender name from <teammate-message teammate_id="X"> tags */
+  messageSender?: string;
 }
 
 export class JsonlParser {
@@ -24,18 +28,53 @@ export class JsonlParser {
   }
 
   private extractActivity(msg: JsonlMessage): ParsedActivity | null {
-    // Only process messages that have an assistant message with content
+    const sessionId = msg.sessionId;
+
+    // Extract agent identity from SendMessage tool results (user messages)
+    if (msg.toolUseResult?.routing?.sender) {
+      const agentName = msg.toolUseResult.routing.sender;
+      if (msg.message?.role === 'user' || msg.type === 'user') {
+        return {
+          type: 'text',
+          text: undefined,
+          agentName,
+          sessionId,
+        };
+      }
+    }
+
+    // Parse <teammate-message> from user messages to extract sender identity
+    if ((msg.message?.role === 'user' || msg.type === 'user') && msg.message?.content) {
+      const content = typeof msg.message.content === 'string'
+        ? msg.message.content
+        : Array.isArray(msg.message.content)
+          ? msg.message.content.map((b: any) => b.text ?? '').join('')
+          : '';
+
+      if (content.includes('<teammate-message')) {
+        const senderMatch = content.match(/<teammate-message\s+teammate_id="([^"]+)"/);
+        if (senderMatch) {
+          return {
+            type: 'text',
+            text: undefined,
+            messageSender: senderMatch[1],
+            sessionId,
+          };
+        }
+      }
+    }
+
+    // Only process messages that have a message with content array
     if (!msg.message?.content || !Array.isArray(msg.message.content)) {
       return null;
     }
 
-    // Only process assistant messages
+    // Only process assistant messages for tools/text/tokens
     if (msg.message.role !== 'assistant') {
       return null;
     }
 
     const content = msg.message.content;
-    const sessionId = msg.sessionId;
 
     // Prioritize tool_use blocks
     for (const block of content) {

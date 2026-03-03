@@ -178,7 +178,7 @@ export class AgentManager {
 
     this.updateChildBadges();
     this.sound?.play('spawn');
-    this.notifications?.notifySpawn(agent.projectName || agent.id.slice(0, 8));
+    this.notifications?.notifySpawn(agent.agentName || agent.projectName || agent.id.slice(0, 8));
   }
 
   private onUpdate(agent: AgentState): void {
@@ -190,6 +190,9 @@ export class AgentManager {
 
     const prevZone = managed.state.currentZone;
     managed.state = agent;
+
+    // Update name label if agentName was discovered
+    managed.sprite.updateName(agent);
 
     // Move to new zone with distributed position
     const target = this.getZonePosition(agent.currentZone, agent.id);
@@ -225,28 +228,38 @@ export class AgentManager {
       this.sound?.play('tool-use');
 
       // Message flow animation for SendMessage
-      if (agent.currentTool === 'SendMessage' && agent.parentId) {
-        const target = this.agents.get(agent.parentId);
-        if (target) {
+      if (agent.currentTool === 'SendMessage') {
+        let targetAgent: { sprite: { container: { x: number; y: number } } } | undefined;
+
+        // First: try to find target by messageTarget name (peer-to-peer)
+        if (agent.messageTarget) {
+          for (const [, other] of this.agents) {
+            if (other.state.agentName === agent.messageTarget || other.state.id === agent.messageTarget) {
+              targetAgent = other;
+              break;
+            }
+          }
+        }
+
+        // Fallback: parent -> child or child -> parent
+        if (!targetAgent && agent.parentId) {
+          targetAgent = this.agents.get(agent.parentId);
+        }
+        if (!targetAgent) {
+          for (const [, other] of this.agents) {
+            if (other.state.parentId === agent.id) {
+              targetAgent = other;
+              break;
+            }
+          }
+        }
+
+        if (targetAgent) {
           this.messageFlow.send(
             managed.sprite.container.x, managed.sprite.container.y,
-            target.sprite.container.x, target.sprite.container.y,
+            targetAgent.sprite.container.x, targetAgent.sprite.container.y,
             palette.body,
           );
-        }
-      }
-      // Also trigger for parent -> child messages
-      if (agent.currentTool === 'SendMessage') {
-        for (const [, other] of this.agents) {
-          if (other.state.parentId === agent.id) {
-            const agentPalette = AGENT_PALETTES[agent.colorIndex % AGENT_PALETTES.length];
-            this.messageFlow.send(
-              managed.sprite.container.x, managed.sprite.container.y,
-              other.sprite.container.x, other.sprite.container.y,
-              agentPalette.body,
-            );
-            break; // send to first child as visual indicator
-          }
         }
       }
 
@@ -271,7 +284,7 @@ export class AgentManager {
     managed.sprite.clearSpeech();
 
     this.sound?.play('idle');
-    this.notifications?.notifyIdle(agent.projectName || agent.id.slice(0, 8));
+    this.notifications?.notifyIdle(agent.agentName || agent.projectName || agent.id.slice(0, 8));
   }
 
   private onShutdown(agentId: string): void {
@@ -279,7 +292,7 @@ export class AgentManager {
     if (!managed) return;
 
     this.sound?.play('shutdown');
-    this.notifications?.notifyShutdown(managed.state.projectName || agentId.slice(0, 8));
+    this.notifications?.notifyShutdown(managed.state.agentName || managed.state.projectName || agentId.slice(0, 8));
 
     const spawnPos = this.world.getZoneCenter('spawn');
     managed.sprite.moveTo(spawnPos.x, spawnPos.y);
@@ -426,7 +439,7 @@ export class AgentManager {
     if (!this._focusedAgentId) return null;
     const managed = this.agents.get(this._focusedAgentId);
     if (!managed) return null;
-    return managed.state.projectName || managed.state.sessionId.slice(0, 10);
+    return managed.state.agentName || managed.state.projectName || managed.state.sessionId.slice(0, 10);
   }
 
   /** Get ordered list of active (non-idle, non-done) agent IDs */

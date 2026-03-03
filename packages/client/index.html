@@ -146,6 +146,30 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .card-kill-btn {
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: transparent;
+      border-radius: 4px;
+      color: #666;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .agent-card:hover .card-kill-btn { opacity: 1; }
+    .card-kill-btn:hover { background: rgba(248,113,113,0.2); color: #f87171; }
     .sparkline-canvas {
       flex-shrink: 0;
       opacity: 0.7;
@@ -367,10 +391,26 @@
       border-bottom: 1px solid rgba(255,255,255,0.06);
       position: relative;
     }
-    #detail-close {
+    .detail-header-buttons {
       position: absolute;
       top: 10px;
       right: 12px;
+      display: flex;
+      gap: 6px;
+    }
+    #detail-kill {
+      height: 28px;
+      border: none;
+      background: rgba(248, 113, 113, 0.12);
+      border-radius: 6px;
+      color: #f87171;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0 10px;
+    }
+    #detail-kill:hover { background: rgba(248, 113, 113, 0.25); color: #fca5a5; }
+    #detail-close {
       width: 28px;
       height: 28px;
       border: none;

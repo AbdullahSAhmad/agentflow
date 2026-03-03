@@ -7,12 +7,16 @@ export interface AgentState {
   sessionId: string;
   projectPath: string;
   projectName: string;
+  /** Logical team agent name (e.g., "alice", "bob") — used to merge multiple sessions into one agent */
+  agentName: string | null;
   role: AgentRole;
   parentId: string | null;
   teamName: string | null;
   currentZone: ZoneId;
   currentTool: string | null;
   currentActivity: string | null;
+  /** Name of the agent being messaged (for SendMessage flow visualization) */
+  messageTarget: string | null;
   taskDescription: string | null; // high-level task summary (e.g. "Implement dark mode")
   speechText: string | null;
   lastActivityAt: number;

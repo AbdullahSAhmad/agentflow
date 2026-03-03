@@ -22,7 +22,10 @@ export class AgentDetailPanel {
     this.panelEl.id = 'agent-detail-panel';
     this.panelEl.innerHTML = `
       <div class="detail-header">
-        <button id="detail-close">&times;</button>
+        <div class="detail-header-buttons">
+          <button id="detail-kill" title="Remove this agent">Kill</button>
+          <button id="detail-close">&times;</button>
+        </div>
         <div id="detail-name"></div>
         <div id="detail-task"></div>
         <div id="detail-meta"></div>
@@ -35,6 +38,9 @@ export class AgentDetailPanel {
 
     // Close button
     this.panelEl.querySelector('#detail-close')!.addEventListener('click', () => this.close());
+
+    // Kill button
+    this.panelEl.querySelector('#detail-kill')!.addEventListener('click', () => this.killAgent());
 
     // Listen for history responses
     this.historyListener = (data) => {
@@ -88,7 +94,7 @@ export class AgentDetailPanel {
   private renderHeader(agent: AgentState): void {
     const palette = AGENT_PALETTES[agent.colorIndex % AGENT_PALETTES.length];
     const borderColor = hexToCss(palette.body);
-    const name = agent.projectName || agent.sessionId.slice(0, 12);
+    const name = agent.agentName || agent.projectName || agent.sessionId.slice(0, 12);
 
     const nameEl = this.panelEl.querySelector('#detail-name')!;
     nameEl.innerHTML = `<span style="color:${borderColor}">\u25CF</span> ${escapeAttr(name)} <span class="detail-role">${agent.role.toUpperCase()}</span>`;
@@ -110,7 +116,7 @@ export class AgentDetailPanel {
     let parentHtml = '';
     if (agent.parentId) {
       const parent = this.store.getAgent(agent.parentId);
-      const parentName = parent ? (parent.projectName || parent.sessionId.slice(0, 10)) : agent.parentId.slice(0, 10);
+      const parentName = parent ? (parent.agentName || parent.projectName || parent.sessionId.slice(0, 10)) : agent.parentId.slice(0, 10);
       parentHtml = `<div>Parent: <a href="#" class="detail-link" data-agent-id="${escapeAttr(agent.parentId)}">${escapeAttr(parentName)}</a></div>`;
     }
 
@@ -119,7 +125,7 @@ export class AgentDetailPanel {
     const children = Array.from(this.store.getAgents().values()).filter(a => a.parentId === agent.id);
     if (children.length > 0) {
       const names = children.map(c => {
-        const n = c.projectName || c.sessionId.slice(0, 10);
+        const n = c.agentName || c.projectName || c.sessionId.slice(0, 10);
         return `<a href="#" class="detail-link" data-agent-id="${escapeAttr(c.id)}">${escapeAttr(n)}</a>`;
       });
       childrenHtml = `<div>Subagents: ${names.join(', ')}</div>`;
@@ -248,6 +254,16 @@ export class AgentDetailPanel {
 
       default:
         return '';
+    }
+  }
+
+  private async killAgent(): Promise<void> {
+    if (!this.selectedAgentId) return;
+    try {
+      const res = await fetch(`/api/agents/${this.selectedAgentId}/shutdown`, { method: 'POST' });
+      if (res.ok) this.close();
+    } catch (err) {
+      console.error('Failed to kill agent:', err);
     }
   }
 

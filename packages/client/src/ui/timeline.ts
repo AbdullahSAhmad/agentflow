@@ -278,7 +278,7 @@ export class Timeline {
       if (!seen.has(e.agent.id)) {
         seen.set(e.agent.id, {
           id: e.agent.id,
-          name: e.agent.projectName || e.agent.id.slice(0, 8),
+          name: e.agent.agentName || e.agent.projectName || e.agent.id.slice(0, 8),
           colorIndex: e.agent.colorIndex,
         });
       }

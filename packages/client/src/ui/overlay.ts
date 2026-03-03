@@ -197,9 +197,11 @@ export class Overlay {
     const orphanSubs: AgentState[] = [];
 
     // Map parentId -> subagents that are in the filtered list
+    // Only nest under parent if the parent is also in the filtered results
+    const filteredParentIds = new Set(parentAgents.map(a => a.id));
     const childrenOf = new Map<string, AgentState[]>();
     for (const sub of subAgents) {
-      if (sub.parentId && allAgentsMap.has(sub.parentId)) {
+      if (sub.parentId && filteredParentIds.has(sub.parentId)) {
         let list = childrenOf.get(sub.parentId);
         if (!list) { list = []; childrenOf.set(sub.parentId, list); }
         list.push(sub);
@@ -244,6 +246,15 @@ export class Overlay {
       });
     });
 
+    // Attach kill button handlers
+    this.agentListEl.querySelectorAll('.card-kill-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = (btn as HTMLElement).dataset.killId;
+        if (id) this.killAgent(id);
+      });
+    });
+
     // Render sparklines onto canvases
     this.agentListEl.querySelectorAll('.sparkline-canvas').forEach((canvas) => {
       const agentId = (canvas as HTMLElement).dataset.agentId;
@@ -258,7 +269,7 @@ export class Overlay {
     const zoneName = zone ? zone.label : agent.currentZone;
     const toolText = agent.currentTool ?? 'none';
     const tokens = formatTokenPair(agent.totalInputTokens, agent.totalOutputTokens);
-    const name = agent.projectName || this.shortenId(agent.sessionId);
+    const name = agent.agentName || agent.projectName || this.shortenId(agent.sessionId);
     const opacity = agent.isDone ? '0.4' : agent.isIdle ? '0.6' : '1';
     const childClass = isChild ? ' agent-card-child' : '';
     const doneClass = agent.isDone ? ' agent-card-done' : '';
@@ -268,7 +279,10 @@ export class Overlay {
     return `<div class="agent-card${childClass}${doneClass}" data-agent-id="${agent.id}" style="border-left: 3px solid ${borderColor}; opacity: ${opacity};">
       <div class="card-top-row">
         <div class="name">${isChild ? '<span class="child-connector">└</span>' : ''}${name}${this.roleBadge(agent.role)}${doneBadge}${subBadge}</div>
-        <canvas class="sparkline-canvas" data-agent-id="${agent.id}" width="60" height="20"></canvas>
+        <div class="card-actions">
+          <canvas class="sparkline-canvas" data-agent-id="${agent.id}" width="60" height="20"></canvas>
+          <button class="card-kill-btn" data-kill-id="${agent.id}" title="Kill agent">&times;</button>
+        </div>
       </div>
       ${agent.taskDescription ? `<div class="task-desc" title="${escapeAttr(agent.taskDescription)}">${escapeHtml(truncate(agent.taskDescription, 48))}</div>` : ''}
       <div class="zone">${zone?.icon ?? ''} ${zoneName} · ${toolText}</div>
@@ -320,6 +334,18 @@ export class Overlay {
     ctx.strokeStyle = '#4ade80';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+  }
+
+  private async killAgent(agentId: string): Promise<void> {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/shutdown`, { method: 'POST' });
+      if (res.ok) {
+        this.renderFilters();
+        this.renderAgents();
+      }
+    } catch (err) {
+      console.error('Failed to kill agent:', err);
+    }
   }
 
   private async cleanDoneAgents(): Promise<void> {

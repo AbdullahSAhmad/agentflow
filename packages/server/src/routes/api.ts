@@ -18,4 +18,14 @@ export function registerApiRoutes(app: FastifyInstance, stateManager: AgentState
     const removed = stateManager.removeDone();
     return { removed, count: removed.length };
   });
+
+  /** POST /api/agents/:id/shutdown – Remove a single agent by id */
+  app.post<{ Params: { id: string } }>('/api/agents/:id/shutdown', async (req, reply) => {
+    const agent = stateManager.getAll().find(a => a.id === req.params.id);
+    if (!agent) {
+      return reply.status(404).send({ error: 'Agent not found' });
+    }
+    stateManager.shutdown(req.params.id);
+    return { removed: req.params.id };
+  });
 }
