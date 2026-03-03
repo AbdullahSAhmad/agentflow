@@ -20,6 +20,8 @@ export interface AgentState {
   isIdle: boolean;
   /** Agent has been idle long enough to be considered finished/done */
   isDone: boolean;
+  /** Agent is in planning mode (between EnterPlanMode and ExitPlanMode) */
+  isPlanning: boolean;
   totalInputTokens: number;
   totalOutputTokens: number;
   cacheReadTokens: number;

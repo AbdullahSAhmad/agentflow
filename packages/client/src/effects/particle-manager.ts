@@ -83,7 +83,7 @@ export class ParticleManager {
 
     const g = new Graphics();
     g.circle(PARTICLE_SIZE, PARTICLE_SIZE, PARTICLE_SIZE).fill(color);
-    tex = this.renderer.generateTexture({ target: g });
+    tex = this.renderer.generateTexture({ target: g }) as Texture;
     g.destroy();
     this.particleTextures.set(color, tex);
     return tex;

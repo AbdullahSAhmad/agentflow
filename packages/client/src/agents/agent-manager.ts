@@ -111,6 +111,15 @@ export class AgentManager {
       messages.push({ text: detail, type: 'tool', icon });
     }
 
+    // Planning mode indicator (shown alongside tool usage)
+    if (agent.isPlanning && agent.currentTool !== 'EnterPlanMode' && agent.currentTool !== 'ExitPlanMode') {
+      messages.push({
+        text: 'Planning...',
+        type: 'tool',
+        icon: '\u{1F4DD}',
+      });
+    }
+
     // Text/speech message
     if (agent.speechText) {
       messages.push({
@@ -189,15 +198,18 @@ export class AgentManager {
     }
 
     managed.sprite.setIdle(false);
+    managed.sprite.setPlanning(agent.isPlanning);
 
-    // Done agents get dimmed — no sounds or particles
+    // Done agents get checkmark badge, sparkles, and slight dim
     if (agent.isDone) {
-      managed.sprite.container.alpha = 0.35;
+      managed.sprite.setDone(true);
       managed.sprite.setIdle(true);
       managed.sprite.clearSpeech();
+      managed.sprite.container.alpha = 0.65;
       return;
     }
 
+    managed.sprite.setDone(false);
     managed.sprite.container.alpha = 1;
 
     // Emit particles on tool use
@@ -270,6 +282,10 @@ export class AgentManager {
         const target = this.getZonePosition(agent.currentZone, agent.id);
         managed.sprite.container.position.set(target.x, target.y);
         managed.sprite.setIdle(agent.isIdle);
+        if (agent.isDone) {
+          managed.sprite.setDone(true);
+          managed.sprite.container.alpha = 0.65;
+        }
       }
     }
   }

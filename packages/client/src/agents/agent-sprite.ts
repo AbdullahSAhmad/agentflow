@@ -4,7 +4,7 @@ import { COLORS } from '@agentflow/shared';
 import { MAIN_SPRITES, SUB_SPRITES, type SpriteSet } from '../sprites/sprite-data.js';
 import { createSpriteTexture, spriteKey } from '../sprites/sprite-factory.js';
 
-type AnimState = 'idle' | 'walk' | 'working';
+type AnimState = 'idle' | 'walk' | 'working' | 'sleeping' | 'done';
 
 export interface SpeechMessage {
   text: string;
@@ -14,10 +14,15 @@ export interface SpeechMessage {
 
 const IDLE_FPS = 2;
 const WALK_FPS = 4;
+const SLEEPING_FPS = 0.7;
 const MOVE_SPEED = 100; // pixels per second
 const ARRIVAL_THRESHOLD = 3;
 const BOB_AMPLITUDE = 1.5;
 const BOB_SPEED = 2;
+const SLEEPING_BOB_AMPLITUDE = 2.5;
+const SLEEPING_BOB_SPEED = 0.8;
+const DONE_BOB_AMPLITUDE = 1.0;
+const DONE_BOB_SPEED = 1.5;
 const SPEECH_DURATION = 3500;
 const SPEECH_ROTATE_DURATION = 3000; // time per message in queue
 const SPEECH_FADE_DURATION = 500;
@@ -27,6 +32,9 @@ const BUBBLE_PAD_Y = 5;
 const BUBBLE_RADIUS = 6;
 const BUBBLE_MAX_WIDTH = 160;
 const POINTER_SIZE = 5;
+const ZZZ_CYCLE = 3000;
+const ZZZ_HEIGHT = 30;
+const ZZZ_DRIFT = 18;
 
 // Bubble colors by type
 const BUBBLE_COLORS = {
@@ -64,14 +72,39 @@ export class AgentSprite {
   private childBadgeBg: Graphics | null = null;
   private childBadgeText: Text | null = null;
 
+  // Planning mode badge
+  private planBadge: Container | null = null;
+  private planBadgeBg: Graphics | null = null;
+  private planBadgeText: Text | null = null;
+  private planPulseTimer = 0;
+  private _isPlanning = false;
+
   private animState: AnimState = 'idle';
   private isIdleState = false;
+  private isDoneState = false;
+  private idleTimer = 0;
+  private static IDLE_TO_SLEEP_MS = 30_000; // 30s standing idle before sleeping
+
+  // ZZZ floating letters for sleeping
+  private zzzContainer: Container;
+  private zzzLetters: Text[];
+  private zzzTimer = 0;
+
+  // Done badge (green checkmark)
+  private doneBadge: Container | null = null;
+  private doneBadgeBg: Graphics | null = null;
+  private doneBadgeText: Text | null = null;
+
+  // Done sparkles
+  private sparkles: { gfx: Graphics; phase: number }[] = [];
 
   private spriteHeight: number;
   private textures: {
     idle: [Texture, Texture];
     walk: [Texture, Texture];
     working: Texture;
+    sleeping: [Texture, Texture];
+    done: Texture;
   };
 
   private frameTimer = 0;
@@ -116,6 +149,11 @@ export class AgentSprite {
         createSpriteTexture(renderer, spriteSet.walk[1], palette, spriteKey(`${keyPrefix}_walk1`, ci)),
       ],
       working: createSpriteTexture(renderer, spriteSet.working, palette, spriteKey(`${keyPrefix}_working`, ci)),
+      sleeping: [
+        createSpriteTexture(renderer, spriteSet.sleeping[0], palette, spriteKey(`${keyPrefix}_sleeping0`, ci)),
+        createSpriteTexture(renderer, spriteSet.sleeping[1], palette, spriteKey(`${keyPrefix}_sleeping1`, ci)),
+      ],
+      done: createSpriteTexture(renderer, spriteSet.done, palette, spriteKey(`${keyPrefix}_done`, ci)),
     };
 
     // Create sprite
@@ -167,6 +205,35 @@ export class AgentSprite {
     this.speechBubble.addChild(this.speechText);
     this.speechBubble.position.set(0, -this.spriteHeight / 2 - 8);
     this.container.addChild(this.speechBubble);
+
+    // ZZZ floating letters for sleeping state
+    this.zzzContainer = new Container();
+    this.zzzContainer.visible = false;
+    this.zzzLetters = [];
+    const zSizes = [8, 10, 13];
+    const zTexts = ['z', 'z', 'Z'];
+    for (let i = 0; i < 3; i++) {
+      const z = new Text({
+        text: zTexts[i],
+        style: new TextStyle({
+          fontSize: zSizes[i],
+          fontFamily: "'Segoe UI', sans-serif",
+          fill: 0x8899cc,
+          fontWeight: '700',
+          dropShadow: {
+            alpha: 0.5,
+            blur: 2,
+            color: 0x000000,
+            distance: 1,
+          },
+        }),
+      });
+      z.anchor.set(0.5, 0.5);
+      this.zzzLetters.push(z);
+      this.zzzContainer.addChild(z);
+    }
+    this.zzzContainer.position.set(this.spriteHeight / 3, -this.spriteHeight / 2);
+    this.container.addChild(this.zzzContainer);
 
     // Spawn animation
     this.spawnAnimTimer = AgentSprite.SPAWN_ANIM_DURATION;
@@ -264,7 +331,67 @@ export class AgentSprite {
 
   /** Set idle visual state */
   setIdle(idle: boolean): void {
+    if (idle && !this.isIdleState) {
+      this.idleTimer = 0; // reset timer on fresh idle transition
+    }
     this.isIdleState = idle;
+  }
+
+  /** Set done visual state with checkmark badge and sparkles */
+  setDone(done: boolean): void {
+    this.isDoneState = done;
+
+    if (done) {
+      // Create done badge (green checkmark)
+      if (!this.doneBadge) {
+        this.doneBadge = new Container();
+        this.doneBadgeBg = new Graphics();
+        this.doneBadge.addChild(this.doneBadgeBg);
+
+        this.doneBadgeText = new Text({
+          text: '\u2713',
+          style: new TextStyle({
+            fontSize: 10,
+            fontFamily: "'Segoe UI', sans-serif",
+            fill: 0xffffff,
+            fontWeight: '700',
+          }),
+        });
+        this.doneBadgeText.anchor.set(0.5, 0.5);
+        this.doneBadge.addChild(this.doneBadgeText);
+
+        this.doneBadge.position.set(0, -this.spriteHeight / 2 - 14);
+        this.container.addChild(this.doneBadge);
+      }
+
+      this.doneBadgeBg!.clear();
+      this.doneBadgeBg!
+        .circle(0, 0, 8)
+        .fill({ color: 0x4caf50, alpha: 0.9 })
+        .stroke({ color: 0x81c784, width: 1.5, alpha: 0.7 });
+      this.doneBadge.visible = true;
+
+      // Create sparkles (small cross-shaped twinkles)
+      if (this.sparkles.length === 0) {
+        const positions = [
+          { x: -14, y: -18 }, { x: 16, y: -12 },
+          { x: -10, y: 8 }, { x: 18, y: 4 },
+        ];
+        for (let i = 0; i < 4; i++) {
+          const gfx = new Graphics();
+          gfx.rect(-0.75, -3, 1.5, 6).fill({ color: 0xffd54f });
+          gfx.rect(-3, -0.75, 6, 1.5).fill({ color: 0xffd54f });
+          gfx.position.set(positions[i].x, positions[i].y);
+          gfx.visible = false;
+          this.container.addChild(gfx);
+          this.sparkles.push({ gfx, phase: Math.random() * 4000 });
+        }
+      }
+      for (const s of this.sparkles) s.gfx.visible = false;
+    } else {
+      if (this.doneBadge) this.doneBadge.visible = false;
+      for (const s of this.sparkles) s.gfx.visible = false;
+    }
   }
 
   /** Update child count badge */
@@ -308,6 +435,54 @@ export class AgentSprite {
     this.childBadge.visible = true;
   }
 
+  /** Show or hide planning mode badge */
+  setPlanning(planning: boolean): void {
+    this._isPlanning = planning;
+
+    if (!planning) {
+      if (this.planBadge) this.planBadge.visible = false;
+      return;
+    }
+
+    if (!this.planBadge) {
+      this.planBadge = new Container();
+
+      this.planBadgeBg = new Graphics();
+      this.planBadge.addChild(this.planBadgeBg);
+
+      this.planBadgeText = new Text({
+        text: 'PLAN',
+        style: new TextStyle({
+          fontSize: 8,
+          fontFamily: "'Segoe UI', sans-serif",
+          fill: 0xffffff,
+          fontWeight: '700',
+          letterSpacing: 0.5,
+        }),
+      });
+      this.planBadgeText.anchor.set(0.5, 0.5);
+      this.planBadge.addChild(this.planBadgeText);
+
+      // Position above and to the left of the sprite
+      this.planBadge.position.set(-this.spriteHeight / 2 + 2, -this.spriteHeight / 2 + 2);
+      this.container.addChild(this.planBadge);
+    }
+
+    this.drawPlanBadge(1);
+    this.planBadge.visible = true;
+  }
+
+  private drawPlanBadge(alpha: number): void {
+    if (!this.planBadgeBg) return;
+    const w = 30;
+    const h = 13;
+    this.planBadgeBg.clear();
+    this.planBadgeBg
+      .roundRect(-w / 2, -h / 2, w, h, 3)
+      .fill({ color: 0xf97316, alpha: alpha * 0.9 })
+      .stroke({ color: 0xfbbf24, width: 1, alpha: alpha * 0.7 });
+  }
+
   /** Fade out and resolve when done */
   fadeOut(): Promise<void> {
     this.fadingOut = true;
@@ -347,11 +522,18 @@ export class AgentSprite {
       this.updateBob(dt);
     }
 
+    // Accumulate idle time for standing → sleeping transition
+    if (this.isIdleState && !this.isDoneState) {
+      this.idleTimer += dt;
+    }
+
     // Determine animation state
     if (this.isMoving) {
       this.animState = 'walk';
-    } else if (this.isIdleState) {
-      this.animState = 'idle';
+    } else if (this.isDoneState) {
+      this.animState = 'done';
+    } else if (this.isIdleState && this.idleTimer >= AgentSprite.IDLE_TO_SLEEP_MS) {
+      this.animState = 'sleeping';
     } else if (this.speechTimer > 0) {
       this.animState = 'working';
     } else {
@@ -360,18 +542,66 @@ export class AgentSprite {
 
     // Animate sprite frames
     this.frameTimer += dt;
-    const fps = this.animState === 'walk' ? WALK_FPS : IDLE_FPS;
+    const fps = this.animState === 'walk' ? WALK_FPS
+      : this.animState === 'sleeping' ? SLEEPING_FPS
+      : IDLE_FPS;
     const frameDuration = 1000 / fps;
 
     if (this.animState === 'working') {
       this.sprite.texture = this.textures.working;
+    } else if (this.animState === 'done') {
+      this.sprite.texture = this.textures.done;
     } else {
       if (this.frameTimer >= frameDuration) {
         this.frameTimer -= frameDuration;
         this.frameIndex = (this.frameIndex + 1) % 2;
       }
-      const frames = this.animState === 'walk' ? this.textures.walk : this.textures.idle;
+      const frames = this.animState === 'walk' ? this.textures.walk
+        : this.animState === 'sleeping' ? this.textures.sleeping
+        : this.textures.idle;
       this.sprite.texture = frames[this.frameIndex];
+    }
+
+    // ZZZ floating animation for sleeping
+    if (this.animState === 'sleeping') {
+      this.zzzContainer.visible = true;
+      this.zzzTimer += dt;
+      for (let i = 0; i < this.zzzLetters.length; i++) {
+        const offset = i / this.zzzLetters.length;
+        const t = ((this.zzzTimer / ZZZ_CYCLE + offset) % 1);
+        const z = this.zzzLetters[i];
+        z.position.set(t * ZZZ_DRIFT, -t * ZZZ_HEIGHT);
+        z.alpha = Math.max(0, 1 - t * 1.3);
+        z.scale.set(0.5 + t * 0.6);
+      }
+    } else {
+      this.zzzContainer.visible = false;
+    }
+
+    // Sparkle animation for done
+    if (this.isDoneState && this.sparkles.length > 0) {
+      for (let i = 0; i < this.sparkles.length; i++) {
+        const s = this.sparkles[i];
+        s.phase += dt;
+        const period = 2000 + i * 700;
+        const t = (s.phase % period) / period;
+        if (t < 0.15) {
+          s.gfx.visible = true;
+          s.gfx.alpha = t / 0.15;
+        } else if (t < 0.3) {
+          s.gfx.visible = true;
+          s.gfx.alpha = 1 - (t - 0.15) / 0.15;
+        } else {
+          s.gfx.visible = false;
+        }
+      }
+    }
+
+    // Planning badge pulse
+    if (this._isPlanning && this.planBadge?.visible) {
+      this.planPulseTimer += dt * 0.003;
+      const pulseAlpha = 0.7 + 0.3 * Math.sin(this.planPulseTimer);
+      this.drawPlanBadge(pulseAlpha);
     }
 
     // Speech bubble: rotation and timer
@@ -432,8 +662,14 @@ export class AgentSprite {
   }
 
   private updateBob(dt: number): void {
-    this.bobTimer += (dt / 1000) * BOB_SPEED * Math.PI * 2;
-    this.container.y = this.baseY + Math.sin(this.bobTimer) * BOB_AMPLITUDE;
+    const amp = this.animState === 'sleeping' ? SLEEPING_BOB_AMPLITUDE
+      : this.animState === 'done' ? DONE_BOB_AMPLITUDE
+      : BOB_AMPLITUDE;
+    const spd = this.animState === 'sleeping' ? SLEEPING_BOB_SPEED
+      : this.animState === 'done' ? DONE_BOB_SPEED
+      : BOB_SPEED;
+    this.bobTimer += (dt / 1000) * spd * Math.PI * 2;
+    this.container.y = this.baseY + Math.sin(this.bobTimer) * amp;
   }
 
   destroy(): void {

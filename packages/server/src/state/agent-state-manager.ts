@@ -113,6 +113,7 @@ export class AgentStateManager extends EventEmitter {
         spawnedAt: now,
         isIdle: false,
         isDone: false,
+        isPlanning: false,
         totalInputTokens: 0,
         totalOutputTokens: 0,
         cacheReadTokens: 0,
@@ -142,6 +143,13 @@ export class AgentStateManager extends EventEmitter {
         agent.currentTool = activity.toolName ?? null;
         agent.currentActivity = this.summarizeToolInput(activity.toolInput) || null;
         agent.currentZone = getZoneForTool(activity.toolName ?? '');
+
+        // Detect planning mode transitions
+        if (activity.toolName === 'EnterPlanMode') {
+          agent.isPlanning = true;
+        } else if (activity.toolName === 'ExitPlanMode') {
+          agent.isPlanning = false;
+        }
 
         // Detect team-related tools
         if (activity.toolName === 'TeamCreate' && activity.toolInput) {
@@ -265,6 +273,7 @@ export class AgentStateManager extends EventEmitter {
       const agent = this.agents.get(sessionId);
       if (agent) {
         agent.isIdle = true;
+        agent.isPlanning = false;
         agent.currentZone = 'idle';
         agent.currentTool = null;
         agent.currentActivity = null;

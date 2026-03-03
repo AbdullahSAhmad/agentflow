@@ -94,12 +94,14 @@ export class AgentDetailPanel {
     nameEl.innerHTML = `<span style="color:${borderColor}">\u25CF</span> ${escapeAttr(name)} <span class="detail-role">${agent.role.toUpperCase()}</span>`;
 
     // Task description
-    const taskEl = this.panelEl.querySelector('#detail-task')!;
-    if (agent.taskDescription) {
-      taskEl.innerHTML = `<div class="detail-task-text">${escapeAttr(agent.taskDescription)}</div>`;
-      taskEl.style.display = '';
-    } else {
-      taskEl.style.display = 'none';
+    const taskEl = this.panelEl.querySelector('#detail-task') as HTMLElement | null;
+    if (taskEl) {
+      if (agent.taskDescription) {
+        taskEl.innerHTML = `<div class="detail-task-text">${escapeAttr(agent.taskDescription)}</div>`;
+        taskEl.style.display = '';
+      } else {
+        taskEl.style.display = 'none';
+      }
     }
 
     const metaEl = this.panelEl.querySelector('#detail-meta')!;
