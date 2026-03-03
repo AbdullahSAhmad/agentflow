@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const port = (() => {
+const preferredPort = (() => {
   const idx = process.argv.indexOf('--port');
   if (idx !== -1 && process.argv[idx + 1]) {
     const p = parseInt(process.argv[idx + 1], 10);
@@ -11,12 +11,16 @@ const port = (() => {
   return 3333;
 })();
 
-process.env.AGENTFLOW_PORT = String(port);
+process.env.AGENTFLOW_PORT = String(preferredPort);
 process.env.__AGENTFLOW_CLI = '1';
 
 async function run() {
   const { main } = await import('../packages/server/dist/index.js');
-  await main();
+  const { port } = await main();
+
+  if (port !== preferredPort) {
+    console.log(`  Port ${preferredPort} was in use, using ${port} instead.`);
+  }
 
   console.log();
   console.log('  ┌──────────────────────────────────────┐');

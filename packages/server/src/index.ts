@@ -48,8 +48,23 @@ export async function main() {
   const watcher = new FileWatcher(config.claudeHome, stateManager);
   watcher.start(existingSessions);
 
-  await app.listen({ port: config.port, host: '0.0.0.0' });
-  console.log(`Server listening on http://localhost:${config.port}`);
+  // Try preferred port, then increment up to 10 times on conflict
+  let actualPort = config.port;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      await app.listen({ port: actualPort, host: '0.0.0.0' });
+      break;
+    } catch (err: any) {
+      if (err.code === 'EADDRINUSE' && attempt < 9) {
+        actualPort++;
+        continue;
+      }
+      throw err;
+    }
+  }
+  console.log(`Server listening on http://localhost:${actualPort}`);
+
+  return { port: actualPort };
 
   // Graceful shutdown
   const shutdown = async () => {
