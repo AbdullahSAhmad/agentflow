@@ -104,6 +104,31 @@ export class ZoneRenderer {
     }
   }
 
+  /**
+   * Destroy and re-create all zone visuals from current ZONES / ZONE_MAP data.
+   * Called by the layout editor after zone positions or sizes change.
+   */
+  rebuild(): void {
+    // Preserve agent counts so glow survives a rebuild
+    const counts = new Map<ZoneId, number>();
+    for (const [id, z] of this.zones) {
+      counts.set(id, z.agentCount);
+    }
+
+    // Tear down existing
+    this.container.removeChildren();
+    this.zones.clear();
+
+    // Recreate from (potentially mutated) ZONES array
+    for (const zone of ZONES) {
+      const zoneDisplay = this.createZone(zone);
+      this.zones.set(zone.id, zoneDisplay);
+      this.container.addChild(zoneDisplay.container);
+      // Restore agent count
+      zoneDisplay.agentCount = counts.get(zone.id) ?? 0;
+    }
+  }
+
   /** Get zone config for positioning */
   getZoneConfig(zoneId: ZoneId): ZoneConfig | undefined {
     return this.zones.get(zoneId)?.config;

@@ -12,4 +12,10 @@ export function registerApiRoutes(app: FastifyInstance, stateManager: AgentState
       timestamp: Date.now(),
     };
   });
+
+  /** POST /api/agents/clean-done – Remove all agents marked as done */
+  app.post('/api/agents/clean-done', async () => {
+    const removed = stateManager.removeDone();
+    return { removed, count: removed.length };
+  });
 }

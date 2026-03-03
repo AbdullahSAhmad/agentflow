@@ -29,6 +29,14 @@ export class CommandPalette {
   private selectedIndex = 0;
   private onCommand: CommandCallback;
 
+  // Bound event handler (stored for cleanup)
+  private globalKeydownHandler = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      this.toggle();
+    }
+  };
+
   constructor(private store: StateStore, onCommand: CommandCallback) {
     this.onCommand = onCommand;
 
@@ -62,12 +70,7 @@ export class CommandPalette {
     this.inputEl.addEventListener('keydown', (e) => this.onKeyDown(e));
 
     // Global shortcut
-    document.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        this.toggle();
-      }
-    });
+    document.addEventListener('keydown', this.globalKeydownHandler);
 
     // Build static actions
     this.buildActions();
@@ -182,6 +185,11 @@ export class CommandPalette {
   close(): void {
     this.isOpen = false;
     this.el.classList.remove('open');
+  }
+
+  dispose(): void {
+    document.removeEventListener('keydown', this.globalKeydownHandler);
+    this.el.remove();
   }
 
   private onFilter(): void {

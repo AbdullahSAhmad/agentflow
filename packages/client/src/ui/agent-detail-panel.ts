@@ -1,6 +1,7 @@
 import type { AgentState, ActivityEntry } from '@agentflow/shared';
 import { AGENT_PALETTES, ZONE_MAP } from '@agentflow/shared';
 import type { StateStore } from '../connection/state-store.js';
+import { escapeAttr, formatTokens, formatDuration, hexToCss } from '../utils/formatting.js';
 
 /**
  * Slide-out detail panel for a selected agent.
@@ -86,16 +87,16 @@ export class AgentDetailPanel {
 
   private renderHeader(agent: AgentState): void {
     const palette = AGENT_PALETTES[agent.colorIndex % AGENT_PALETTES.length];
-    const borderColor = '#' + palette.body.toString(16).padStart(6, '0');
+    const borderColor = hexToCss(palette.body);
     const name = agent.projectName || agent.sessionId.slice(0, 12);
 
     const nameEl = this.panelEl.querySelector('#detail-name')!;
-    nameEl.innerHTML = `<span style="color:${borderColor}">\u25CF</span> ${this.esc(name)} <span class="detail-role">${agent.role.toUpperCase()}</span>`;
+    nameEl.innerHTML = `<span style="color:${borderColor}">\u25CF</span> ${escapeAttr(name)} <span class="detail-role">${agent.role.toUpperCase()}</span>`;
 
     // Task description
     const taskEl = this.panelEl.querySelector('#detail-task')!;
     if (agent.taskDescription) {
-      taskEl.innerHTML = `<div class="detail-task-text">${this.esc(agent.taskDescription)}</div>`;
+      taskEl.innerHTML = `<div class="detail-task-text">${escapeAttr(agent.taskDescription)}</div>`;
       taskEl.style.display = '';
     } else {
       taskEl.style.display = 'none';
@@ -108,7 +109,7 @@ export class AgentDetailPanel {
     if (agent.parentId) {
       const parent = this.store.getAgent(agent.parentId);
       const parentName = parent ? (parent.projectName || parent.sessionId.slice(0, 10)) : agent.parentId.slice(0, 10);
-      parentHtml = `<div>Parent: <a href="#" class="detail-link" data-agent-id="${this.esc(agent.parentId)}">${this.esc(parentName)}</a></div>`;
+      parentHtml = `<div>Parent: <a href="#" class="detail-link" data-agent-id="${escapeAttr(agent.parentId)}">${escapeAttr(parentName)}</a></div>`;
     }
 
     // Find children (subagents whose parentId = this agent)
@@ -117,15 +118,15 @@ export class AgentDetailPanel {
     if (children.length > 0) {
       const names = children.map(c => {
         const n = c.projectName || c.sessionId.slice(0, 10);
-        return `<a href="#" class="detail-link" data-agent-id="${this.esc(c.id)}">${this.esc(n)}</a>`;
+        return `<a href="#" class="detail-link" data-agent-id="${escapeAttr(c.id)}">${escapeAttr(n)}</a>`;
       });
       childrenHtml = `<div>Subagents: ${names.join(', ')}</div>`;
     }
 
     metaEl.innerHTML = `
       <div>Session: <code>${agent.sessionId.slice(0, 16)}...</code></div>
-      ${agent.model ? `<div>Model: <code>${this.esc(agent.model)}</code></div>` : ''}
-      ${agent.teamName ? `<div>Team: ${this.esc(agent.teamName)}</div>` : ''}
+      ${agent.model ? `<div>Model: <code>${escapeAttr(agent.model)}</code></div>` : ''}
+      ${agent.teamName ? `<div>Team: ${escapeAttr(agent.teamName)}</div>` : ''}
       ${parentHtml}
       ${childrenHtml}
     `;
@@ -144,9 +145,7 @@ export class AgentDetailPanel {
     const zone = ZONE_MAP.get(agent.currentZone);
     const zoneName = zone ? `${zone.icon} ${zone.label}` : agent.currentZone;
     const totalTokens = agent.totalInputTokens + agent.totalOutputTokens;
-    const tokensStr = totalTokens >= 1_000_000 ? `${(totalTokens / 1_000_000).toFixed(1)}M`
-      : totalTokens >= 1_000 ? `${(totalTokens / 1_000).toFixed(1)}K`
-      : `${totalTokens}`;
+    const tokensStr = formatTokens(totalTokens);
 
     const statsEl = this.panelEl.querySelector('#detail-stats')!;
     statsEl.innerHTML = `
@@ -156,7 +155,7 @@ export class AgentDetailPanel {
       </div>
       <div class="stat-row">
         <span class="stat-label">Tool</span>
-        <span class="stat-value tool-val">${agent.currentTool ? this.esc(agent.currentTool) : '<span style="color:#666">none</span>'}</span>
+        <span class="stat-value tool-val">${agent.currentTool ? escapeAttr(agent.currentTool) : '<span style="color:#666">none</span>'}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Status</span>
@@ -164,11 +163,11 @@ export class AgentDetailPanel {
       </div>
       <div class="stat-row">
         <span class="stat-label">Tokens</span>
-        <span class="stat-value">${tokensStr} <span style="color:#666">(${this.formatNum(agent.totalInputTokens)} in / ${this.formatNum(agent.totalOutputTokens)} out)</span></span>
+        <span class="stat-value">${tokensStr} <span style="color:#666">(${formatTokens(agent.totalInputTokens)} in / ${formatTokens(agent.totalOutputTokens)} out)</span></span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Uptime</span>
-        <span class="stat-value">${this.formatDuration(Date.now() - agent.spawnedAt)}</span>
+        <span class="stat-value">${formatDuration(Date.now() - agent.spawnedAt)}</span>
       </div>
     `;
   }
@@ -196,15 +195,15 @@ export class AgentDetailPanel {
         return `<div class="feed-entry feed-tool">
           ${timeHtml}
           <span class="feed-icon">&#128295;</span>
-          <span class="feed-tool-name">${this.esc(entry.tool ?? 'unknown')}</span>
-          ${entry.toolArgs ? `<div class="feed-args">${this.esc(entry.toolArgs)}</div>` : ''}
+          <span class="feed-tool-name">${escapeAttr(entry.tool ?? 'unknown')}</span>
+          ${entry.toolArgs ? `<div class="feed-args">${escapeAttr(entry.toolArgs)}</div>` : ''}
         </div>`;
 
       case 'text':
         return `<div class="feed-entry feed-text">
           ${timeHtml}
           <span class="feed-icon">&#128172;</span>
-          <span>${this.esc(entry.text ?? '')}</span>
+          <span>${escapeAttr(entry.text ?? '')}</span>
         </div>`;
 
       case 'zone-change': {
@@ -242,7 +241,7 @@ export class AgentDetailPanel {
         return `<div class="feed-entry feed-tokens">
           ${timeHtml}
           <span class="feed-icon">&#127916;</span>
-          +${this.formatNum(entry.inputTokens ?? 0)} in / +${this.formatNum(entry.outputTokens ?? 0)} out
+          +${formatTokens(entry.inputTokens ?? 0)} in / +${formatTokens(entry.outputTokens ?? 0)} out
         </div>`;
 
       default:
@@ -255,24 +254,4 @@ export class AgentDetailPanel {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
-  private formatNum(n: number): string {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-    return `${n}`;
-  }
-
-  private formatDuration(ms: number): string {
-    const sec = Math.floor(ms / 1000);
-    if (sec < 60) return `${sec}s`;
-    const min = Math.floor(sec / 60);
-    const remSec = sec % 60;
-    if (min < 60) return `${min}m ${remSec}s`;
-    const hr = Math.floor(min / 60);
-    const remMin = min % 60;
-    return `${hr}h ${remMin}m`;
-  }
-
-  private esc(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
 }

@@ -1,8 +1,9 @@
 import type { AgentState, ZoneId } from '@agentflow/shared';
 import { AGENT_PALETTES, ZONE_MAP, ZONES } from '@agentflow/shared';
 import type { StateStore, ConnectionStatus } from '../connection/state-store.js';
+import { escapeHtml, escapeAttr, truncate, formatTokenPair, hexToCss } from '../utils/formatting.js';
 
-type FilterMode = 'all' | 'active' | 'idle' | ZoneId;
+type FilterMode = 'all' | 'active' | 'idle' | 'done' | ZoneId;
 
 /** Token sample for sparkline rendering */
 interface TokenHistory {
@@ -77,15 +78,21 @@ export class Overlay {
       { label: 'All', value: 'all' },
       { label: 'Active', value: 'active' },
       { label: 'Idle', value: 'idle' },
+      { label: 'Done', value: 'done' },
     ];
 
-    this.filterEl.innerHTML = filters.map(f =>
-      `<button class="filter-pill${this.currentFilter === f.value ? ' active' : ''}" data-filter="${f.value}">${f.label}</button>`
-    ).join('') + `
+    // Count done agents for badge
+    const doneCount = Array.from(this.store.getAgents().values()).filter(a => a.isDone).length;
+
+    this.filterEl.innerHTML = filters.map(f => {
+      const badge = f.value === 'done' && doneCount > 0 ? ` <span class="filter-badge">${doneCount}</span>` : '';
+      return `<button class="filter-pill${this.currentFilter === f.value ? ' active' : ''}" data-filter="${f.value}">${f.label}${badge}</button>`;
+    }).join('') + `
       <select class="filter-zone-select" title="Filter by zone">
         <option value="">Zone...</option>
         ${ZONES.map(z => `<option value="${z.id}" ${this.currentFilter === z.id ? 'selected' : ''}>${z.icon} ${z.label}</option>`).join('')}
       </select>
+      ${doneCount > 0 ? `<button class="clean-done-btn" title="Remove ${doneCount} done agent${doneCount > 1 ? 's' : ''}">Clean up (${doneCount})</button>` : ''}
     `;
 
     // Bind filter clicks
@@ -109,6 +116,12 @@ export class Overlay {
       this.renderFilters();
       this.renderAgents();
     });
+
+    // Bind clean-up button
+    const cleanBtn = this.filterEl.querySelector('.clean-done-btn');
+    if (cleanBtn) {
+      cleanBtn.addEventListener('click', () => this.cleanDoneAgents());
+    }
   }
 
   private updateConnectionStatus(status: ConnectionStatus): void {
@@ -118,17 +131,6 @@ export class Overlay {
 
   private shortenId(id: string): string {
     return id.length > 8 ? id.slice(0, 8) : id;
-  }
-
-  private formatTokens(input: number, output: number): string {
-    const total = input + output;
-    if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M tokens`;
-    if (total >= 1_000) return `${(total / 1_000).toFixed(1)}K tokens`;
-    return `${total} tokens`;
-  }
-
-  private hexToCSS(hex: number): string {
-    return '#' + hex.toString(16).padStart(6, '0');
   }
 
   private roleBadge(role: string): string {
@@ -155,9 +157,11 @@ export class Overlay {
       case 'all':
         return agents;
       case 'active':
-        return agents.filter(a => !a.isIdle);
+        return agents.filter(a => !a.isIdle && !a.isDone);
       case 'idle':
-        return agents.filter(a => a.isIdle);
+        return agents.filter(a => a.isIdle && !a.isDone);
+      case 'done':
+        return agents.filter(a => a.isDone);
       default:
         // Zone filter
         return agents.filter(a => a.currentZone === this.currentFilter);
@@ -179,8 +183,9 @@ export class Overlay {
       return;
     }
 
-    // Sort: non-idle first, then by spawn time
+    // Sort: active first, then idle, then done, then by spawn time
     agents.sort((a, b) => {
+      if (a.isDone !== b.isDone) return a.isDone ? 1 : -1;
       if (a.isIdle !== b.isIdle) return a.isIdle ? 1 : -1;
       return a.spawnedAt - b.spawnedAt;
     });
@@ -248,22 +253,24 @@ export class Overlay {
 
   private renderCard(agent: AgentState, isChild = false, subCount = 0): string {
     const palette = AGENT_PALETTES[agent.colorIndex % AGENT_PALETTES.length];
-    const borderColor = this.hexToCSS(palette.body);
+    const borderColor = hexToCss(palette.body);
     const zone = ZONE_MAP.get(agent.currentZone);
     const zoneName = zone ? zone.label : agent.currentZone;
     const toolText = agent.currentTool ?? 'none';
-    const tokens = this.formatTokens(agent.totalInputTokens, agent.totalOutputTokens);
+    const tokens = formatTokenPair(agent.totalInputTokens, agent.totalOutputTokens);
     const name = agent.projectName || this.shortenId(agent.sessionId);
-    const opacity = agent.isIdle ? '0.6' : '1';
+    const opacity = agent.isDone ? '0.4' : agent.isIdle ? '0.6' : '1';
     const childClass = isChild ? ' agent-card-child' : '';
+    const doneClass = agent.isDone ? ' agent-card-done' : '';
     const subBadge = subCount > 0 ? `<span class="sub-count" title="${subCount} subagent${subCount > 1 ? 's' : ''}">${subCount} sub${subCount > 1 ? 's' : ''}</span>` : '';
+    const doneBadge = agent.isDone ? '<span style="background:#66666633;color:#888;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;margin-left:6px;">DONE</span>' : '';
 
-    return `<div class="agent-card${childClass}" data-agent-id="${agent.id}" style="border-left: 3px solid ${borderColor}; opacity: ${opacity};">
+    return `<div class="agent-card${childClass}${doneClass}" data-agent-id="${agent.id}" style="border-left: 3px solid ${borderColor}; opacity: ${opacity};">
       <div class="card-top-row">
-        <div class="name">${isChild ? '<span class="child-connector">└</span>' : ''}${name}${this.roleBadge(agent.role)}${subBadge}</div>
+        <div class="name">${isChild ? '<span class="child-connector">└</span>' : ''}${name}${this.roleBadge(agent.role)}${doneBadge}${subBadge}</div>
         <canvas class="sparkline-canvas" data-agent-id="${agent.id}" width="60" height="20"></canvas>
       </div>
-      ${agent.taskDescription ? `<div class="task-desc" title="${this.escAttr(agent.taskDescription)}">${this.esc(this.truncate(agent.taskDescription, 48))}</div>` : ''}
+      ${agent.taskDescription ? `<div class="task-desc" title="${escapeAttr(agent.taskDescription)}">${escapeHtml(truncate(agent.taskDescription, 48))}</div>` : ''}
       <div class="zone">${zone?.icon ?? ''} ${zoneName} · ${toolText}</div>
       <div style="color: #666; font-size: 11px; margin-top: 3px;">${tokens}</div>
     </div>`;
@@ -315,16 +322,16 @@ export class Overlay {
     ctx.stroke();
   }
 
-  private esc(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  private escAttr(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  private truncate(s: string, max: number): string {
-    return s.length > max ? s.slice(0, max - 1) + '…' : s;
+  private async cleanDoneAgents(): Promise<void> {
+    try {
+      const res = await fetch('/api/agents/clean-done', { method: 'POST' });
+      if (res.ok) {
+        this.renderFilters();
+        this.renderAgents();
+      }
+    } catch (err) {
+      console.error('Failed to clean done agents:', err);
+    }
   }
 
   dispose(): void {

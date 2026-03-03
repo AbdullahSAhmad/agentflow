@@ -95,6 +95,11 @@ export class WorldManager {
     this.zoneRenderer.setAgentCount(zoneId, count);
   }
 
+  /** Rebuild all zone visuals from current ZONE_MAP data (used by layout editor) */
+  rebuildZones(): void {
+    this.zoneRenderer.rebuild();
+  }
+
   /** Per-frame update */
   update(dt: number): void {
     this.zoneRenderer.update(dt);

@@ -18,8 +18,12 @@ export interface AgentState {
   lastActivityAt: number;
   spawnedAt: number;
   isIdle: boolean;
+  /** Agent has been idle long enough to be considered finished/done */
+  isDone: boolean;
   totalInputTokens: number;
   totalOutputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
   model: string | null;
   colorIndex: number;
 }

@@ -3,7 +3,7 @@ import type { AgentState, ZoneId } from '@agentflow/shared';
 import { AGENT_PALETTES, ZONE_MAP } from '@agentflow/shared';
 import type { StateStore } from '../connection/state-store.js';
 import type { WorldManager } from '../world/world-manager.js';
-import { AgentSprite } from './agent-sprite.js';
+import { AgentSprite, type SpeechMessage } from './agent-sprite.js';
 import { RelationshipLines } from './relationship-lines.js';
 import { ParticleManager } from '../effects/particle-manager.js';
 import { ZoneGlow } from '../effects/zone-glow.js';
@@ -14,6 +14,26 @@ interface ManagedAgent {
   sprite: AgentSprite;
   state: AgentState;
 }
+
+/** Tool name -> icon mapping for speech bubbles */
+const TOOL_ICONS: Record<string, string> = {
+  Read: '\u{1F4D6}',       // open book
+  Write: '\u{270F}\uFE0F', // pencil
+  Edit: '\u{1F527}',       // wrench
+  Bash: '\u{1F4BB}',       // terminal
+  Glob: '\u{1F50D}',       // search
+  Grep: '\u{1F50E}',       // search right
+  WebSearch: '\u{1F310}',  // globe
+  WebFetch: '\u{1F310}',   // globe
+  Agent: '\u{1F916}',      // robot
+  TeamCreate: '\u{1F465}', // people
+  SendMessage: '\u{1F4AC}',// speech
+  TaskCreate: '\u{1F4CB}', // clipboard
+  TaskUpdate: '\u{2705}',  // check
+  AskUserQuestion: '\u{2753}', // question
+  EnterPlanMode: '\u{1F4DD}',  // memo
+  ExitPlanMode: '\u{1F4DD}',   // memo
+};
 
 const AGENT_SPREAD = 60; // spacing between agents in a zone
 
@@ -53,15 +73,86 @@ export class AgentManager {
     this.store.on('state:reset', (agents) => this.onReset(agents));
   }
 
+  /** Build rich speech messages from agent state */
+  private buildSpeechMessages(agent: AgentState): SpeechMessage[] {
+    const messages: SpeechMessage[] = [];
+
+    // Input-needed check
+    if (agent.currentTool === 'AskUserQuestion') {
+      messages.push({
+        text: 'Waiting for input...',
+        type: 'input-needed',
+        icon: '\u{23F3}',
+      });
+      return messages;
+    }
+
+    // Tool message with details
+    if (agent.currentTool) {
+      const icon = TOOL_ICONS[agent.currentTool] || '\u{2699}\uFE0F';
+      let detail = agent.currentTool;
+
+      // Add file path or command info
+      if (agent.currentActivity) {
+        const activity = agent.currentActivity;
+        // Extract meaningful short form
+        if (activity.length <= 50) {
+          detail = `${agent.currentTool}: ${activity}`;
+        } else {
+          // Try to extract just filename from path
+          const parts = activity.replace(/\\/g, '/').split('/');
+          const shortPath = parts.length > 2
+            ? `.../${parts.slice(-2).join('/')}`
+            : activity.slice(0, 45);
+          detail = `${agent.currentTool}: ${shortPath}`;
+        }
+      }
+
+      messages.push({ text: detail, type: 'tool', icon });
+    }
+
+    // Text/speech message
+    if (agent.speechText) {
+      messages.push({
+        text: agent.speechText,
+        type: 'text',
+        icon: '\u{1F4AD}',
+      });
+    }
+
+    return messages;
+  }
+
+  /** Count children for each agent and update badges */
+  private updateChildBadges(): void {
+    const childCounts = new Map<string, number>();
+    for (const [, managed] of this.agents) {
+      if (managed.state.parentId) {
+        childCounts.set(managed.state.parentId, (childCounts.get(managed.state.parentId) ?? 0) + 1);
+      }
+    }
+    for (const [id, managed] of this.agents) {
+      managed.sprite.setChildCount(childCounts.get(id) ?? 0);
+    }
+  }
+
   private onSpawn(agent: AgentState): void {
     if (this.agents.has(agent.id)) return;
 
     const palette = AGENT_PALETTES[agent.colorIndex % AGENT_PALETTES.length];
     const sprite = new AgentSprite(agent, palette, this.app.renderer);
 
-    // Place at spawn zone center
-    const spawnPos = this.world.getZoneCenter('spawn');
-    sprite.container.position.set(spawnPos.x, spawnPos.y);
+    // If agent has a parent, start at parent's position for visual emergence
+    const parentManaged = agent.parentId ? this.agents.get(agent.parentId) : null;
+    if (parentManaged) {
+      sprite.container.position.set(
+        parentManaged.sprite.container.x,
+        parentManaged.sprite.container.y,
+      );
+    } else {
+      const spawnPos = this.world.getZoneCenter('spawn');
+      sprite.container.position.set(spawnPos.x, spawnPos.y);
+    }
 
     this.agents.set(agent.id, { sprite, state: agent });
     this.world.addAgent(sprite.container);
@@ -70,6 +161,7 @@ export class AgentManager {
     const target = this.getZonePosition(agent.currentZone, agent.id);
     sprite.moveTo(target.x, target.y);
 
+    this.updateChildBadges();
     this.sound?.play('spawn');
     this.notifications?.notifySpawn(agent.projectName || agent.id.slice(0, 8));
   }
@@ -88,16 +180,25 @@ export class AgentManager {
     const target = this.getZonePosition(agent.currentZone, agent.id);
     managed.sprite.moveTo(target.x, target.y);
 
-    // Show speech bubble
-    if (agent.currentTool) {
-      managed.sprite.setSpeech(agent.currentTool);
-    } else if (agent.speechText) {
-      managed.sprite.setSpeech(agent.speechText);
+    // Build and show rich speech messages
+    const messages = this.buildSpeechMessages(agent);
+    if (messages.length > 0) {
+      managed.sprite.setSpeech(messages);
     } else {
-      managed.sprite.setSpeech('');
+      managed.sprite.clearSpeech();
     }
 
     managed.sprite.setIdle(false);
+
+    // Done agents get dimmed — no sounds or particles
+    if (agent.isDone) {
+      managed.sprite.container.alpha = 0.35;
+      managed.sprite.setIdle(true);
+      managed.sprite.clearSpeech();
+      return;
+    }
+
+    managed.sprite.container.alpha = 1;
 
     // Emit particles on tool use
     if (agent.currentTool) {
@@ -120,7 +221,7 @@ export class AgentManager {
     const target = this.getZonePosition('idle', agent.id);
     managed.sprite.moveTo(target.x, target.y);
     managed.sprite.setIdle(true);
-    managed.sprite.setSpeech('');
+    managed.sprite.clearSpeech();
 
     this.sound?.play('idle');
     this.notifications?.notifyIdle(agent.projectName || agent.id.slice(0, 8));
@@ -140,6 +241,7 @@ export class AgentManager {
       this.world.removeAgent(managed.sprite.container);
       managed.sprite.destroy();
       this.agents.delete(agentId);
+      this.updateChildBadges();
     });
   }
 
@@ -241,7 +343,7 @@ export class AgentManager {
         colorIndex: managed.state.colorIndex,
       });
     }
-    this.lines.update(lineData);
+    this.lines.update(lineData, deltaMs);
 
     // Update zone glow counts
     const agentZones = Array.from(this.agents.values()).map((m) => m.state.currentZone as ZoneId);

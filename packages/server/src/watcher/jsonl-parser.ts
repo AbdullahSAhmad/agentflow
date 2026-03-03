@@ -7,6 +7,8 @@ export interface ParsedActivity {
   text?: string;
   inputTokens?: number;
   outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
   model?: string;
   sessionId?: string;
 }
@@ -71,6 +73,8 @@ export class JsonlParser {
         type: 'token_usage',
         inputTokens: msg.message.usage.input_tokens,
         outputTokens: msg.message.usage.output_tokens,
+        cacheReadTokens: msg.message.usage.cache_read_input_tokens,
+        cacheCreationTokens: msg.message.usage.cache_creation_input_tokens,
         model: msg.message.model,
         sessionId,
       };

@@ -12,6 +12,7 @@ const MAX_TIMELINE_EVENTS = 5000;
 export class AgentStateManager extends EventEmitter {
   private agents = new Map<string, AgentState>();
   private idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private shutdownTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private colorCounter = 0;
   private activityHistory = new Map<string, ActivityEntry[]>();
   private timelineBuffer: TimelineEvent[] = [];
@@ -111,8 +112,11 @@ export class AgentStateManager extends EventEmitter {
         lastActivityAt: now,
         spawnedAt: now,
         isIdle: false,
+        isDone: false,
         totalInputTokens: 0,
         totalOutputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
         model: activity.model ?? null,
         colorIndex: this.colorCounter++ % 12,
       };
@@ -126,6 +130,7 @@ export class AgentStateManager extends EventEmitter {
     // Update agent based on activity
     agent.lastActivityAt = now;
     agent.isIdle = false;
+    agent.isDone = false;
 
     if (activity.model) {
       agent.model = activity.model;
@@ -196,6 +201,8 @@ export class AgentStateManager extends EventEmitter {
       case 'token_usage':
         agent.totalInputTokens += activity.inputTokens ?? 0;
         agent.totalOutputTokens += activity.outputTokens ?? 0;
+        agent.cacheReadTokens += activity.cacheReadTokens ?? 0;
+        agent.cacheCreationTokens += activity.cacheCreationTokens ?? 0;
         this.addHistory(sessionId, {
           timestamp: now,
           kind: 'tokens',
@@ -250,6 +257,10 @@ export class AgentStateManager extends EventEmitter {
     const existing = this.idleTimers.get(sessionId);
     if (existing) clearTimeout(existing);
 
+    // Clear any pending shutdown timer since the agent is active again
+    const existingShutdown = this.shutdownTimers.get(sessionId);
+    if (existingShutdown) clearTimeout(existingShutdown);
+
     const timer = setTimeout(() => {
       const agent = this.agents.get(sessionId);
       if (agent) {
@@ -267,16 +278,54 @@ export class AgentStateManager extends EventEmitter {
         } satisfies AgentEvent;
         this.recordTimeline(idleEvent);
         this.emit('agent:idle', idleEvent);
+
+        // Start shutdown timer — remove the agent after extended idleness
+        this.startShutdownTimer(sessionId);
       }
     }, config.idleTimeoutMs);
 
     this.idleTimers.set(sessionId, timer);
   }
 
+  private startShutdownTimer(sessionId: string) {
+    const existing = this.shutdownTimers.get(sessionId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      const agent = this.agents.get(sessionId);
+      if (agent && agent.isIdle && !agent.isDone) {
+        agent.isDone = true;
+        console.log(`Agent marked done: ${sessionId} (idle for ${config.shutdownTimeoutMs / 1000}s)`);
+        const ts = Date.now();
+        const updateEvent = { type: 'agent:update', agent: { ...agent }, timestamp: ts } satisfies AgentEvent;
+        this.recordTimeline(updateEvent);
+        this.emit('agent:update', updateEvent);
+      }
+    }, config.shutdownTimeoutMs);
+
+    this.shutdownTimers.set(sessionId, timer);
+  }
+
+  /** Remove all agents marked as done */
+  removeDone(): string[] {
+    const removed: string[] = [];
+    for (const [id, agent] of this.agents) {
+      if (agent.isDone) {
+        removed.push(id);
+        this.shutdown(id);
+      }
+    }
+    return removed;
+  }
+
   shutdown(sessionId: string) {
     const timer = this.idleTimers.get(sessionId);
     if (timer) clearTimeout(timer);
     this.idleTimers.delete(sessionId);
+
+    const shutdownTimer = this.shutdownTimers.get(sessionId);
+    if (shutdownTimer) clearTimeout(shutdownTimer);
+    this.shutdownTimers.delete(sessionId);
 
     const ts = Date.now();
     this.addHistory(sessionId, { timestamp: ts, kind: 'shutdown' });

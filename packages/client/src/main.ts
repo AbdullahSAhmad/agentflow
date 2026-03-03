@@ -11,6 +11,7 @@ import { NotificationManager } from './audio/notification-manager.js';
 import { ZoneHeatmap } from './ui/zone-heatmap.js';
 import { CommandPalette } from './ui/command-palette.js';
 import { AnalyticsPanel } from './ui/analytics-panel.js';
+import { LayoutEditor, applySavedLayout } from './ui/layout-editor.js';
 import { ZONE_MAP } from '@agentflow/shared';
 
 async function main() {
@@ -22,8 +23,15 @@ async function main() {
   // Init state store
   const store = new StateStore();
 
+  // ── Feature 5: Layout Editor ──
+  // Apply saved layout BEFORE WorldManager so ZoneRenderer picks up persisted positions
+  applySavedLayout();
+
   // Init world (zones, grid, camera)
   const world = new WorldManager(pixiApp);
+
+  // Init layout editor (after WorldManager so it can trigger redraws)
+  const layoutEditor = new LayoutEditor(world);
 
   // Init agent manager (bridges state -> rendering)
   const agentManager = new AgentManager(pixiApp, world, store);
@@ -151,10 +159,13 @@ async function main() {
     agentManager.update(pixiApp.ticker.deltaMS);
 
     // Update heatmap overlay position to match camera
+    const root = world.root;
     if (heatmapVisible) {
-      const root = world.root;
       heatmap.updateTransform(root.x, root.y, root.scale.x);
     }
+
+    // Update layout editor overlay position to match camera
+    layoutEditor.updateTransform(root.x, root.y, root.scale.x);
   });
 
   console.log('Claude Code Visualizer started');

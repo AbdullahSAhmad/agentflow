@@ -3,3 +3,4 @@ dist/
 .vite/
 *.tsbuildinfo
 .playwright-mcp/
+COMPETITIVE_ANALYSIS.md
