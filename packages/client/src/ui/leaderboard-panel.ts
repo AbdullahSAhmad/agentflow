@@ -1,5 +1,5 @@
 import type { AgentState } from '@agent-move/shared';
-import { AGENT_PALETTES, getModelPricing } from '@agent-move/shared';
+import { AGENT_PALETTES, computeAgentCost } from '@agent-move/shared';
 import type { StateStore } from '../connection/state-store.js';
 import { escapeHtml, formatTokens, formatDuration } from '../utils/formatting.js';
 
@@ -50,9 +50,7 @@ export class LeaderboardPanel {
   }
 
   private computeCost(agent: AgentState): number {
-    const pricing = getModelPricing(agent.model ?? '');
-    const cacheInputCost = agent.cacheReadTokens * pricing.input * 0.1;
-    return (agent.totalInputTokens * pricing.input + agent.totalOutputTokens * pricing.output + cacheInputCost) / 1_000_000;
+    return computeAgentCost(agent);
   }
 
   private render(): void {

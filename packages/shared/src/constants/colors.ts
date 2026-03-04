@@ -72,3 +72,18 @@ export function getModelPricing(model: string | null): ModelPricing {
   if (model.includes('sonnet')) return MODEL_PRICING['claude-sonnet-4-6'];
   return DEFAULT_PRICING;
 }
+
+/** Compute cost for an agent's token usage (in dollars) */
+export function computeAgentCost(tokens: {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  model: string | null;
+}): number {
+  const pricing = getModelPricing(tokens.model);
+  return (tokens.totalInputTokens / 1_000_000) * pricing.input +
+         (tokens.totalOutputTokens / 1_000_000) * pricing.output +
+         (tokens.cacheReadTokens / 1_000_000) * pricing.input * 0.1 +
+         (tokens.cacheCreationTokens / 1_000_000) * pricing.input * 1.25;
+}

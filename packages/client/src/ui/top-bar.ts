@@ -1,5 +1,5 @@
 import type { AgentState } from '@agent-move/shared';
-import { getModelPricing } from '@agent-move/shared';
+import { computeAgentCost } from '@agent-move/shared';
 import type { StateStore } from '../connection/state-store.js';
 import { formatTokens } from '../utils/formatting.js';
 
@@ -129,11 +129,7 @@ export class TopBar {
 
     let totalCost = 0;
     for (const a of agents) {
-      const pricing = getModelPricing(a.model);
-      totalCost += (a.totalInputTokens / 1_000_000) * pricing.input +
-                   (a.totalOutputTokens / 1_000_000) * pricing.output +
-                   (a.cacheReadTokens / 1_000_000) * pricing.input * 0.1 +
-                   (a.cacheCreationTokens / 1_000_000) * pricing.input * 1.25;
+      totalCost += computeAgentCost(a);
     }
 
     const velocity = this.getVelocity();

@@ -1,5 +1,5 @@
 import type { AgentState, ZoneId } from '@agent-move/shared';
-import { AGENT_PALETTES, ZONES, ZONE_MAP, getModelPricing } from '@agent-move/shared';
+import { AGENT_PALETTES, ZONES, ZONE_MAP, getModelPricing, computeAgentCost } from '@agent-move/shared';
 import type { StateStore } from '../connection/state-store.js';
 import { escapeHtml, hexToCss, formatTokens, formatDuration } from '../utils/formatting.js';
 
@@ -138,11 +138,13 @@ export class AnalyticsPanel {
   }
 
   private calculateCost(agent: AgentSnapshot): number {
-    const pricing = getModelPricing(agent.model);
-    return (agent.inputTokens / 1_000_000) * pricing.input +
-           (agent.outputTokens / 1_000_000) * pricing.output +
-           (agent.cacheReadTokens / 1_000_000) * pricing.input * 0.1 +
-           (agent.cacheCreationTokens / 1_000_000) * pricing.input * 1.25;
+    return computeAgentCost({
+      totalInputTokens: agent.inputTokens,
+      totalOutputTokens: agent.outputTokens,
+      cacheReadTokens: agent.cacheReadTokens,
+      cacheCreationTokens: agent.cacheCreationTokens,
+      model: agent.model,
+    });
   }
 
   private getTokenVelocity(): number {
