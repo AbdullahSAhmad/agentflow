@@ -218,14 +218,6 @@ export class CommandPalette {
       action: () => this.onCommand('toggle-leaderboard'),
     });
     this.actions.push({
-      id: 'feature:isometric',
-      label: 'Toggle Isometric View',
-      description: '3D perspective transform (I)',
-      icon: '🔲',
-      category: 'feature',
-      action: () => this.onCommand('toggle-isometric'),
-    });
-    this.actions.push({
       id: 'feature:theme',
       label: 'Cycle Theme',
       description: 'Switch between Office, Space, Castle, Cyberpunk',

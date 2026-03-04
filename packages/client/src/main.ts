@@ -251,9 +251,6 @@ async function main() {
       case 'toggle-leaderboard':
         leaderboard.toggle();
         break;
-      case 'toggle-isometric':
-        world.toggleIsometric();
-        break;
       case 'cycle-theme':
         themeManager.cycleNext();
         break;
@@ -383,9 +380,6 @@ async function main() {
       case 'l':
         leaderboard.toggle();
         leaderboardBtn?.classList.toggle('active');
-        break;
-      case 'i':
-        world.toggleIsometric();
         break;
       case 'p':
         themeManager.cycleNext();

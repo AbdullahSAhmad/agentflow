@@ -55,7 +55,6 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'N', description: 'Toggle day/night cycle' },
       { keys: 'Tab', description: 'Toggle mini-map' },
       { keys: 'L', description: 'Toggle leaderboard' },
-      { keys: 'I', description: 'Toggle isometric view' },
       { keys: 'P', description: 'Cycle theme' },
     ],
   },

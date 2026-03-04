@@ -5,7 +5,6 @@ import { createGrid } from './grid.js';
 import { ZoneRenderer } from './zone-renderer.js';
 import { Camera } from './camera.js';
 import { DayNightCycle } from '../effects/day-night-cycle.js';
-import { IsometricView } from './isometric.js';
 import type { Theme } from './themes/theme-types.js';
 
 /**
@@ -23,7 +22,6 @@ export class WorldManager {
   public readonly zoneRenderer: ZoneRenderer;
   public readonly camera: Camera;
   public readonly dayNight: DayNightCycle;
-  public readonly isometric: IsometricView;
   private app: Application;
 
   constructor(app: Application) {
@@ -52,9 +50,6 @@ export class WorldManager {
 
     // Set up camera
     this.camera = new Camera(app, this.root);
-
-    // Isometric view
-    this.isometric = new IsometricView();
 
     // Auto-fit to viewport
     this.camera.resetView(WORLD_WIDTH, WORLD_HEIGHT);
@@ -118,11 +113,6 @@ export class WorldManager {
   applyTheme(theme: Theme): void {
     this.zoneRenderer.setThemeDecorators(theme.decorators);
     this.app.renderer.background.color = theme.colors.background;
-  }
-
-  /** Toggle isometric view */
-  toggleIsometric(): void {
-    this.isometric.toggle(this.root);
   }
 
   /** Per-frame update */
