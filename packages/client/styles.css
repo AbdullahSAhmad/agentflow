@@ -253,6 +253,10 @@ canvas { display: block; }
 }
 #theme-select:hover { background: var(--surface-hover); color: var(--text-primary); }
 #theme-select:focus { border-color: var(--accent); }
+#theme-select option {
+  background: #1a1e38;
+  color: #fff;
+}
 
 /* ═══════════════════════════════════════════
    FOCUS SUB-BAR (below top bar)
