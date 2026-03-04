@@ -44,6 +44,7 @@ export class AnalyticsPanel {
   private thresholdFocused = false;
   private alertEl: HTMLElement | null = null;
   private toolCounts = new Map<string, number>();
+  private zoneTime = new Map<ZoneId, number>();
   private _customizationLookup: ((agent: AgentState) => { displayName: string; colorIndex: number }) | null = null;
 
   setCustomizationLookup(lookup: (agent: AgentState) => { displayName: string; colorIndex: number }): void {
@@ -106,6 +107,10 @@ export class AnalyticsPanel {
     let total = 0;
     for (const a of agents) {
       total += a.totalInputTokens + a.totalOutputTokens;
+      // Accumulate zone time (in seconds)
+      const zoneKey: ZoneId = a.isIdle ? 'idle' as ZoneId : a.currentZone;
+      const prev = this.zoneTime.get(zoneKey) ?? 0;
+      this.zoneTime.set(zoneKey, prev + SAMPLE_INTERVAL / 1000);
     }
     this.tokenSamples.push({ timestamp: Date.now(), totalTokens: total });
     if (this.tokenSamples.length > MAX_SAMPLES) {
@@ -269,6 +274,11 @@ export class AnalyticsPanel {
       </div>
 
       <div class="analytics-section">
+        <div class="section-title">Time Spent by Zone</div>
+        ${this.renderZoneTimeBars()}
+      </div>
+
+      <div class="analytics-section">
         <div class="section-title">Tool Usage Distribution</div>
         ${this.renderToolUsageBars()}
       </div>
@@ -337,6 +347,35 @@ export class AnalyticsPanel {
         <div class="zone-bar-label">
           <span>${zone?.icon ?? ''} ${zone?.label ?? zoneId}</span>
           <span class="zone-bar-cost">$${cost.toFixed(4)} (${pct.toFixed(0)}%)</span>
+        </div>
+        <div class="zone-bar-track">
+          <div class="zone-bar-fill" style="width:${Math.max(2, pct)}%;background:${color}"></div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  private renderZoneTimeBars(): string {
+    if (this.zoneTime.size === 0) {
+      return '<div class="analytics-empty">Collecting data...</div>';
+    }
+
+    const totalTime = Array.from(this.zoneTime.values()).reduce((a, b) => a + b, 0);
+    const entries = Array.from(this.zoneTime.entries())
+      .sort((a, b) => b[1] - a[1]);
+
+    return entries.map(([zoneId, seconds]) => {
+      const zone = ZONE_MAP.get(zoneId);
+      const isIdle = zoneId === 'idle';
+      const pct = totalTime > 0 ? (seconds / totalTime) * 100 : 0;
+      const color = isIdle ? '#6b7280' : (zone ? hexToCss(zone.color) : '#666');
+      const label = isIdle ? 'Idle' : (zone?.label ?? zoneId);
+      const icon = isIdle ? '\u{1F4A4}' : (zone?.icon ?? '');
+
+      return `<div class="zone-bar">
+        <div class="zone-bar-label">
+          <span>${icon} ${label}</span>
+          <span class="zone-bar-cost">${formatDuration(seconds * 1000)} (${pct.toFixed(0)}%)</span>
         </div>
         <div class="zone-bar-track">
           <div class="zone-bar-fill" style="width:${Math.max(2, pct)}%;background:${color}"></div>
