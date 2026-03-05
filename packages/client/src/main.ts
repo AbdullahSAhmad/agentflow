@@ -261,8 +261,7 @@ async function main() {
       case 'toggle-mute':
         sound.init();
         sound.muted = !sound.muted;
-        muteBtn.textContent = sound.muted ? '\u{1F507}' : '\u{1F508}';
-        muteBtn.classList.toggle('muted', sound.muted);
+        updateMuteIcon();
         break;
       case 'toggle-heatmap':
         heatmapVisible = !heatmapVisible;
@@ -349,13 +348,28 @@ async function main() {
   document.getElementById('zoom-out')!.addEventListener('click', () => world.camera.zoomOut());
   document.getElementById('zoom-reset')!.addEventListener('click', () => world.resetCamera());
 
-  // Audio controls (mute button in top bar)
+  // Audio controls (mute button + volume slider in top bar)
   const muteBtn = document.getElementById('mute-btn')!;
+  const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement;
+
+  function updateMuteIcon(): void {
+    muteBtn.textContent = sound.muted || sound.volume === 0 ? '\u{1F507}' : '\u{1F508}';
+    muteBtn.classList.toggle('muted', sound.muted || sound.volume === 0);
+  }
+
   muteBtn.addEventListener('click', () => {
     sound.init();
     sound.muted = !sound.muted;
-    muteBtn.textContent = sound.muted ? '\u{1F507}' : '\u{1F508}';
-    muteBtn.classList.toggle('muted', sound.muted);
+    updateMuteIcon();
+  });
+
+  volumeSlider.addEventListener('input', () => {
+    sound.init();
+    sound.volume = Number(volumeSlider.value) / 100;
+    if (sound.muted && sound.volume > 0) {
+      sound.muted = false;
+    }
+    updateMuteIcon();
   });
 
   // Shortcuts button
@@ -396,8 +410,7 @@ async function main() {
       case 'm':
         sound.init();
         sound.muted = !sound.muted;
-        muteBtn.textContent = sound.muted ? '\u{1F507}' : '\u{1F508}';
-        muteBtn.classList.toggle('muted', sound.muted);
+        updateMuteIcon();
         break;
       case 'f':
         if (!focusModeActive) {
