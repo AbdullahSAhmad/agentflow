@@ -368,9 +368,11 @@ export class AgentManager {
       managed.sprite.bumpActivity();
     }
 
-    // Play zone change sound if zone changed
+    // Play zone change sound and trigger flow line if zone changed
     if (prevZone !== agent.currentZone) {
       this.sound?.play('zone-change');
+      const palette = AGENT_PALETTES[this.getDisplayColorIndex(agent) % AGENT_PALETTES.length];
+      this.world.flowLines.triggerFlow(prevZone, agent.currentZone, palette.body);
     }
   }
 

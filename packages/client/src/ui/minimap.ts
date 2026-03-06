@@ -14,8 +14,8 @@ export class Minimap {
 
   constructor(camera: Camera, onNavigate: (worldX: number, worldY: number) => void) {
     this.camera = camera;
-    this.scaleX = MAP_W / WORLD_WIDTH;
-    this.scaleY = MAP_H / WORLD_HEIGHT;
+    this.scaleX = MAP_W / Math.max(1, WORLD_WIDTH);
+    this.scaleY = MAP_H / Math.max(1, WORLD_HEIGHT);
 
     this.canvas = document.createElement('canvas');
     const dpr = window.devicePixelRatio || 1;
@@ -55,6 +55,10 @@ export class Minimap {
   /** Render minimap each frame */
   render(agents: Array<{ x: number; y: number; colorIndex: number }>, viewport: { x: number; y: number; width: number; height: number; zoom: number }): void {
     if (!this._visible) return;
+
+    // Recalculate scale each frame since world size can change
+    this.scaleX = MAP_W / Math.max(1, WORLD_WIDTH);
+    this.scaleY = MAP_H / Math.max(1, WORLD_HEIGHT);
 
     const ctx = this.ctx;
     ctx.clearRect(0, 0, MAP_W, MAP_H);

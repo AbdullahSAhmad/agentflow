@@ -1,65 +1,28 @@
 import type { ZoneConfig } from '../types/zone.js';
 
 /**
- * Non-symmetric office floor plan.
- * Rooms have varying sizes that reflect their function.
- * All rooms tile within a unified building shell.
+ * Responsive bento-grid zone layout.
+ * Zones are defined by grid position (colStart/colSpan/rowStart/rowSpan)
+ * on a 12-column grid with 3 rows of varying weight.
  *
- * Layout (approx):
- * ┌────────────────┬──────────┬───────────┐
- * │  Search/Library │ Terminal │  Web/Tech │
- * │  (440×400)      │ (280×400)│ (340×400) │
- * ├──────────┬──────┴──────────┴──┬────────┤
- * │  Files   │  Thinking/Meeting  │ Msgs   │
- * │ (320×320)│  (440×320)         │(300×320)│
- * ├────┬─────┴──────────┬─────────┴────────┤
- * │Spwn│  Idle/Break    │     Tasks        │
- * │220 │  (460×260)     │    (380×260)     │
- * └────┴────────────────┴──────────────────┘
+ * Layout:
+ * ┌─────────────┬──────────┬────────────┐
+ * │  Search      │ Terminal │  Web       │  Row 0 (weight 5)
+ * │  [col 0-4]   │ [col 5-7]│ [col 8-11] │
+ * ├──────────┬───┴──────────┴──┬─────────┤
+ * │  Files   │  Thinking       │ Msgs    │  Row 1 (weight 4)
+ * │ [col 0-3]│  [col 4-8]      │[col 9-11]│
+ * ├────┬─────┴──────────┬──────┴─────────┤
+ * │Spwn│  Idle          │    Tasks       │  Row 2 (weight 3)
+ * │0-2 │  [col 3-7]     │   [col 8-11]  │
+ * └────┴────────────────┴────────────────┘
+ *
+ * x/y/width/height are computed by the LayoutEngine at runtime.
+ * The defaults below are fallback values for the original fixed layout.
  */
 
-const WALL = 8;
-const PAD = 12;
-
-// Row heights
-const R0H = 400;
-const R1H = 320;
-const R2H = 260;
-
-// Row y positions
-const R0Y = PAD;
-const R1Y = PAD + R0H + WALL;
-const R2Y = PAD + R0H + WALL + R1H + WALL;
-
-// Row 0 widths (total inner = 440 + 8 + 280 + 8 + 340 = 1076)
-const S0_W = 440;  // Search
-const S1_W = 280;  // Terminal
-const S2_W = 340;  // Web
-
-// Row 1 widths (total inner = 320 + 8 + 440 + 8 + 300 = 1076)
-const S3_W = 320;  // Files
-const S4_W = 440;  // Thinking
-const S5_W = 300;  // Messaging
-
-// Row 2 widths (total inner = 220 + 8 + 460 + 8 + 380 = 1076)
-const S6_W = 220;  // Spawn
-const S7_W = 460;  // Idle
-const S8_W = 380;  // Tasks
-
-// Row 0 x positions
-const R0X0 = PAD;
-const R0X1 = PAD + S0_W + WALL;
-const R0X2 = PAD + S0_W + WALL + S1_W + WALL;
-
-// Row 1 x positions
-const R1X0 = PAD;
-const R1X1 = PAD + S3_W + WALL;
-const R1X2 = PAD + S3_W + WALL + S4_W + WALL;
-
-// Row 2 x positions
-const R2X0 = PAD;
-const R2X1 = PAD + S6_W + WALL;
-const R2X2 = PAD + S6_W + WALL + S7_W + WALL;
+export const GRID_COLS = 12;
+export const ROW_WEIGHTS = [5, 4, 3];
 
 export const ZONES: ZoneConfig[] = [
   // Row 0
@@ -67,79 +30,108 @@ export const ZONES: ZoneConfig[] = [
     id: 'search',
     label: 'Search',
     description: 'Grep, WebSearch — Research & lookup',
-    icon: '📚',
+    icon: '\u{1F4DA}',
     color: 0xeab308,
-    x: R0X0, y: R0Y, width: S0_W, height: R0H,
+    colStart: 0, colSpan: 5, rowStart: 0, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
   {
     id: 'terminal',
     label: 'Terminal',
     description: 'Bash commands — Server room',
-    icon: '💻',
+    icon: '\u{1F4BB}',
     color: 0x22c55e,
-    x: R0X1, y: R0Y, width: S1_W, height: R0H,
+    colStart: 5, colSpan: 3, rowStart: 0, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
   {
     id: 'web',
     label: 'Web',
     description: 'WebFetch, Browser — Network hub',
-    icon: '🌐',
+    icon: '\u{1F310}',
     color: 0x8b5cf6,
-    x: R0X2, y: R0Y, width: S2_W, height: R0H,
+    colStart: 8, colSpan: 4, rowStart: 0, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
   // Row 1
   {
     id: 'files',
     label: 'Files',
     description: 'Read, Write, Edit, Glob — File storage',
-    icon: '📁',
+    icon: '\u{1F4C1}',
     color: 0x3b82f6,
-    x: R1X0, y: R1Y, width: S3_W, height: R1H,
+    colStart: 0, colSpan: 4, rowStart: 1, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
   {
     id: 'thinking',
     label: 'Thinking',
     description: 'Planning, Questions — Conference area',
-    icon: '💭',
+    icon: '\u{1F4AD}',
     color: 0xf97316,
-    x: R1X1, y: R1Y, width: S4_W, height: R1H,
+    colStart: 4, colSpan: 5, rowStart: 1, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
   {
     id: 'messaging',
     label: 'Messaging',
     description: 'SendMessage, Teams — Chat & relax',
-    icon: '💬',
+    icon: '\u{1F4AC}',
     color: 0xec4899,
-    x: R1X2, y: R1Y, width: S5_W, height: R1H,
+    colStart: 9, colSpan: 3, rowStart: 1, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
   // Row 2
   {
     id: 'spawn',
     label: 'Spawn',
     description: 'Agent spawn/despawn — Entry portal',
-    icon: '🌀',
+    icon: '\u{1F300}',
     color: 0xa855f7,
-    x: R2X0, y: R2Y, width: S6_W, height: R2H,
+    colStart: 0, colSpan: 3, rowStart: 2, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
   {
     id: 'idle',
     label: 'Idle',
     description: 'Idle agents rest here — Kitchen & lounge',
-    icon: '☕',
+    icon: '\u{2615}',
     color: 0x6b7280,
-    x: R2X1, y: R2Y, width: S7_W, height: R2H,
+    colStart: 3, colSpan: 5, rowStart: 2, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
   {
     id: 'tasks',
     label: 'Tasks',
     description: 'TaskCreate, TaskUpdate — Kanban & planning',
-    icon: '📋',
+    icon: '\u{1F4CB}',
     color: 0x14b8a6,
-    x: R2X2, y: R2Y, width: S8_W, height: R2H,
+    colStart: 8, colSpan: 4, rowStart: 2, rowSpan: 1,
+    x: 0, y: 0, width: 0, height: 0,
   },
 ];
 
 export const ZONE_MAP = new Map(ZONES.map((z) => [z.id, z]));
 
-export const WORLD_WIDTH = PAD * 2 + S0_W + WALL + S1_W + WALL + S2_W;
-export const WORLD_HEIGHT = R2Y + R2H + PAD;
+/** Dynamic world dimensions — updated by LayoutEngine */
+let _worldWidth = 1100;
+let _worldHeight = 980;
+
+export function setWorldSize(w: number, h: number): void {
+  _worldWidth = w;
+  _worldHeight = h;
+}
+
+export const WORLD_WIDTH_GETTER = { get value() { return _worldWidth; } };
+export const WORLD_HEIGHT_GETTER = { get value() { return _worldHeight; } };
+
+/** Legacy static exports — for backward compat in files that import them */
+export let WORLD_WIDTH = 1100;
+export let WORLD_HEIGHT = 980;
+
+export function updateWorldExports(w: number, h: number): void {
+  WORLD_WIDTH = w;
+  WORLD_HEIGHT = h;
+  _worldWidth = w;
+  _worldHeight = h;
+}

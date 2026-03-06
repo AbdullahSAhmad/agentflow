@@ -11,7 +11,7 @@ export type { TaskStatus, TaskNode, TaskGraphData } from './types/task-graph.js'
 
 // Constants
 export { TOOL_ZONE_MAP, getZoneForTool } from './constants/tools.js';
-export { ZONES, ZONE_MAP, WORLD_WIDTH, WORLD_HEIGHT } from './constants/zones.js';
+export { ZONES, ZONE_MAP, WORLD_WIDTH, WORLD_HEIGHT, GRID_COLS, ROW_WEIGHTS, updateWorldExports } from './constants/zones.js';
 export { AGENT_PALETTES, COLORS, MODEL_PRICING, DEFAULT_PRICING, getModelPricing, computeAgentCost, getProjectColorIndex } from './constants/colors.js';
 export type { AgentPalette, ModelPricing } from './constants/colors.js';
 export { getFunnyName } from './constants/names.js';

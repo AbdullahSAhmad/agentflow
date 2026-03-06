@@ -1,10 +1,12 @@
 import { Application, Container } from 'pixi.js';
-import { WORLD_WIDTH, WORLD_HEIGHT, ZONE_MAP } from '@agent-move/shared';
+import { ZONE_MAP } from '@agent-move/shared';
 import type { ZoneId, ZoneConfig } from '@agent-move/shared';
 import { createGrid } from './grid.js';
 import { ZoneRenderer } from './zone-renderer.js';
 import { Camera } from './camera.js';
+import { LayoutEngine } from './layout-engine.js';
 import { DayNightCycle } from '../effects/day-night-cycle.js';
+import { FlowLines } from '../effects/flow-lines.js';
 import type { Theme } from './themes/theme-types.js';
 
 /**
@@ -22,27 +24,46 @@ export class WorldManager {
   public readonly zoneRenderer: ZoneRenderer;
   public readonly camera: Camera;
   public readonly dayNight: DayNightCycle;
+  public readonly flowLines: FlowLines;
+  private layoutEngine: LayoutEngine;
   private app: Application;
+  private _worldWidth = 1100;
+  private _worldHeight = 980;
+  private gridGraphics: import('pixi.js').Graphics;
+  private resizeHandler: () => void;
 
   constructor(app: Application) {
     this.app = app;
-    // Build grid
-    const grid = createGrid();
-    this.gridLayer.addChild(grid);
+    this.layoutEngine = new LayoutEngine();
 
-    // Build zones
+    // Compute initial layout based on viewport
+    const screenW = app.screen.width;
+    const screenH = app.screen.height;
+    const { worldWidth, worldHeight } = this.layoutEngine.computeLayout(screenW, screenH);
+    this._worldWidth = worldWidth;
+    this._worldHeight = worldHeight;
+
+    // Build grid background
+    this.gridGraphics = createGrid(worldWidth, worldHeight);
+    this.gridLayer.addChild(this.gridGraphics);
+
+    // Build zones (they read from mutated ZONES array)
     this.zoneRenderer = new ZoneRenderer();
     this.zoneLayer = this.zoneRenderer.container;
+
+    // Flow lines between zones
+    this.flowLines = new FlowLines();
 
     // Assemble layers in order
     this.root.addChild(this.gridLayer);
     this.root.addChild(this.zoneLayer);
+    this.root.addChild(this.flowLines.container);
     this.root.addChild(this.agentLayer);
     this.root.addChild(this.effectLayer);
     this.root.addChild(this.uiLayer);
 
     // Day/night overlay (topmost, click-through)
-    this.dayNight = new DayNightCycle(WORLD_WIDTH, WORLD_HEIGHT);
+    this.dayNight = new DayNightCycle(worldWidth, worldHeight);
     this.root.addChild(this.dayNight.overlay);
 
     // Add root to stage
@@ -52,12 +73,43 @@ export class WorldManager {
     this.camera = new Camera(app, this.root);
 
     // Auto-fit to viewport
-    this.camera.resetView(WORLD_WIDTH, WORLD_HEIGHT);
+    this.camera.resetView(worldWidth, worldHeight);
+
+    // Listen for resize
+    this.resizeHandler = () => this.onResize();
+    window.addEventListener('resize', this.resizeHandler);
+  }
+
+  private onResize(): void {
+    const screenW = this.app.screen.width;
+    const screenH = this.app.screen.height;
+    const { worldWidth, worldHeight } = this.layoutEngine.computeLayout(screenW, screenH);
+
+    if (worldWidth === this._worldWidth && worldHeight === this._worldHeight) return;
+
+    this._worldWidth = worldWidth;
+    this._worldHeight = worldHeight;
+
+    // Rebuild grid background
+    this.gridLayer.removeChildren();
+    this.gridGraphics.destroy();
+    this.gridGraphics = createGrid(worldWidth, worldHeight);
+    this.gridLayer.addChild(this.gridGraphics);
+
+    // Rebuild zone visuals from mutated ZONES array
+    this.zoneRenderer.rebuild();
+
+    // Resize day/night overlay
+    this.dayNight.overlay.clear();
+    this.dayNight.overlay.rect(0, 0, worldWidth, worldHeight).fill({ color: 0x1a1a4a, alpha: 1 });
+
+    // Re-fit camera
+    this.camera.resetView(worldWidth, worldHeight);
   }
 
   /** Reset camera to fit all rooms */
   resetCamera(): void {
-    this.camera.resetView(WORLD_WIDTH, WORLD_HEIGHT);
+    this.camera.resetView(this._worldWidth, this._worldHeight);
   }
 
   /** Add an agent to the agent layer (accepts object with .container or a Container directly) */
@@ -86,7 +138,7 @@ export class WorldManager {
   getZoneCenter(zoneId: ZoneId): { x: number; y: number } {
     const zone = ZONE_MAP.get(zoneId);
     if (!zone) {
-      return { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 };
+      return { x: this._worldWidth / 2, y: this._worldHeight / 2 };
     }
     return {
       x: zone.x + zone.width / 2,
@@ -119,8 +171,13 @@ export class WorldManager {
   update(dt: number): void {
     this.zoneRenderer.update(dt);
     this.dayNight.update(dt);
+    this.flowLines.update(dt);
   }
 
-  get worldWidth(): number { return WORLD_WIDTH; }
-  get worldHeight(): number { return WORLD_HEIGHT; }
+  get worldWidth(): number { return this._worldWidth; }
+  get worldHeight(): number { return this._worldHeight; }
+
+  destroy(): void {
+    window.removeEventListener('resize', this.resizeHandler);
+  }
 }

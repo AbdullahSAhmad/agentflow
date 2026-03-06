@@ -19,4 +19,12 @@ export interface ZoneConfig {
   height: number;
   color: number;
   icon: string;
+  /** Grid column start (0-based, 12-column grid) */
+  colStart: number;
+  /** Grid column span */
+  colSpan: number;
+  /** Grid row index (0-based) */
+  rowStart: number;
+  /** Grid row span */
+  rowSpan: number;
 }
