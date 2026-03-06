@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { AgentState, AgentEvent, ZoneId, ActivityEntry, TimelineEvent, AnomalyEvent, ToolChainData, TaskGraphData } from '@agent-move/shared';
+import type { AgentState, AgentEvent, AgentPhase, ZoneId, ActivityEntry, TimelineEvent, AnomalyEvent, ToolChainData, TaskGraphData } from '@agent-move/shared';
 import { getZoneForTool, getProjectColorIndex } from '@agent-move/shared';
 import { config } from '../config.js';
 import type { ParsedActivity } from '../watcher/jsonl-parser.js';
@@ -457,6 +457,8 @@ export class AgentStateManager extends EventEmitter {
         isDone: false,
         isPlanning: false,
         isWaitingForUser: false,
+        phase: 'running' as AgentPhase,
+        lastToolOutcome: null,
         totalInputTokens: 0,
         totalOutputTokens: 0,
         cacheReadTokens: 0,
@@ -535,6 +537,7 @@ export class AgentStateManager extends EventEmitter {
     agent.lastActivityAt = now;
     agent.isIdle = false;
     agent.isDone = false;
+    if (agent.phase === 'idle') agent.phase = 'running';
 
     if (activity.model) {
       agent.model = activity.model;
@@ -846,6 +849,7 @@ export class AgentStateManager extends EventEmitter {
         agent.isIdle = true;
         agent.isPlanning = false;
         agent.isWaitingForUser = false;
+        agent.phase = 'idle';
         agent.currentZone = 'idle';
         agent.currentTool = null;
         agent.currentActivity = null;
@@ -959,6 +963,148 @@ export class AgentStateManager extends EventEmitter {
         this.shutdown(childId);
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hook-based lifecycle methods (Phase B: merge event sources)
+  // ---------------------------------------------------------------------------
+
+  /** Hook: new Claude Code session started */
+  hookSessionStart(sessionId: string, _cwd: string): void {
+    // If agent already exists (from JSONL), reset it to running
+    const canonicalId = this.resolveAgentId(sessionId);
+    const agent = this.agents.get(canonicalId);
+    if (agent) {
+      agent.isIdle = false;
+      agent.isDone = false;
+      agent.phase = 'running';
+      agent.lastActivityAt = Date.now();
+      this.resetIdleTimer(canonicalId);
+    }
+    // If not yet known, JSONL will spawn it when the first message arrives
+  }
+
+  /** Hook: session ended — definitively shut down the agent */
+  hookSessionEnd(sessionId: string): void {
+    const canonicalId = this.resolveAgentId(sessionId);
+    if (this.agents.has(canonicalId)) {
+      this.shutdown(canonicalId);
+    }
+  }
+
+  /** Hook: user submitted a prompt — agent is now running */
+  hookUserPromptSubmit(sessionId: string): void {
+    this.setPhase(sessionId, 'running');
+  }
+
+  /** Hook: agent finished responding (Stop event) */
+  hookStop(sessionId: string, lastMessage?: string): void {
+    const canonicalId = this.resolveAgentId(sessionId);
+    const agent = this.agents.get(canonicalId);
+    if (!agent || this.hiddenAgents.has(canonicalId)) return;
+
+    agent.phase = 'idle';
+    agent.isIdle = true;
+    agent.isPlanning = false;
+    agent.isWaitingForUser = false;
+    agent.currentZone = 'idle';
+    agent.currentTool = null;
+    agent.currentActivity = null;
+    if (lastMessage) {
+      agent.speechText = lastMessage.length > 200 ? lastMessage.slice(0, 197) + '...' : lastMessage;
+    }
+
+    const now = Date.now();
+    this.addHistory(canonicalId, { timestamp: now, kind: 'idle', zone: 'idle' });
+    const idleEvent = { type: 'agent:idle', agent: { ...agent }, timestamp: now } satisfies AgentEvent;
+    this.recordTimeline(idleEvent);
+    this.emit('agent:idle', idleEvent);
+
+    // Reset idle timer — it will still eventually trigger shutdown
+    this.resetIdleTimer(canonicalId);
+  }
+
+  /** Hook: context compaction is starting */
+  hookPreCompact(sessionId: string): void {
+    this.setPhase(sessionId, 'compacting');
+  }
+
+  /** Hook: tool is about to execute (PreToolUse) */
+  hookPreToolUse(sessionId: string, toolName: string, toolInput: unknown, _toolUseId: string): void {
+    const canonicalId = this.resolveAgentId(sessionId);
+    const agent = this.agents.get(canonicalId);
+    if (!agent || this.hiddenAgents.has(canonicalId)) return;
+
+    agent.phase = 'running';
+    agent.lastToolOutcome = null;
+    // Zone + currentTool will be set when JSONL tool_use arrives (richer data)
+    // but we can set it here as a fast preview if JSONL hasn't arrived yet
+    agent.currentTool = toolName;
+    agent.currentZone = getZoneForTool(toolName);
+    if (toolInput) {
+      agent.currentActivity = this.summarizeToolInput(toolInput);
+    }
+    agent.lastActivityAt = Date.now();
+    this.resetIdleTimer(canonicalId);
+    this.toolChainTracker.recordToolStart(canonicalId, toolName);
+
+    const now = Date.now();
+    const updateEvent = { type: 'agent:update', agent: { ...agent }, timestamp: now } satisfies AgentEvent;
+    this.recordTimeline(updateEvent);
+    this.emit('agent:update', updateEvent);
+  }
+
+  /** Hook: background task completed (TaskCompleted event) */
+  hookTaskCompleted(sessionId: string, taskId: string, taskSubject?: string): void {
+    const canonicalId = this.resolveAgentId(sessionId);
+    const agent = this.agents.get(canonicalId);
+    const root = agent?.rootSessionId ?? canonicalId;
+
+    const changed = this.taskGraphManager.processTaskCompleted(taskId, root);
+    if (changed) {
+      this.emit('taskgraph:changed', { data: this.taskGraphManager.getSnapshot(), timestamp: Date.now() });
+    }
+    this.emit('task:completed', {
+      taskId,
+      taskSubject: taskSubject ?? `Task ${taskId}`,
+      agentId: canonicalId,
+    });
+  }
+
+  /** Hook: tool completed (PostToolUse = success, PostToolUseFailure = failure) */
+  hookPostToolUse(sessionId: string, _toolName: string, _toolUseId: string, success: boolean): void {
+    const canonicalId = this.resolveAgentId(sessionId);
+    const agent = this.agents.get(canonicalId);
+    if (!agent || this.hiddenAgents.has(canonicalId)) return;
+
+    agent.lastToolOutcome = success ? 'success' : 'failure';
+    this.toolChainTracker.recordToolOutcome(canonicalId, success);
+    agent.lastActivityAt = Date.now();
+    this.resetIdleTimer(canonicalId);
+
+    const now = Date.now();
+    const updateEvent = { type: 'agent:update', agent: { ...agent }, timestamp: now } satisfies AgentEvent;
+    this.recordTimeline(updateEvent);
+    this.emit('agent:update', updateEvent);
+  }
+
+  private setPhase(sessionId: string, phase: AgentPhase): void {
+    const canonicalId = this.resolveAgentId(sessionId);
+    const agent = this.agents.get(canonicalId);
+    if (!agent || this.hiddenAgents.has(canonicalId)) return;
+
+    agent.phase = phase;
+    if (phase === 'running') {
+      agent.isIdle = false;
+      agent.isDone = false;
+      agent.lastActivityAt = Date.now();
+      this.resetIdleTimer(canonicalId);
+    }
+
+    const now = Date.now();
+    const updateEvent = { type: 'agent:update', agent: { ...agent }, timestamp: now } satisfies AgentEvent;
+    this.recordTimeline(updateEvent);
+    this.emit('agent:update', updateEvent);
   }
 
   dispose(): void {

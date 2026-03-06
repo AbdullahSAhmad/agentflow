@@ -225,6 +225,46 @@ export class CommandPalette {
       category: 'feature',
       action: () => this.onCommand('cycle-theme'),
     });
+    this.actions.push({
+      id: 'feature:toolchain',
+      label: 'Toggle Tool Chains',
+      description: 'Tool usage stats and transition graph (C)',
+      icon: '🔗',
+      category: 'feature',
+      action: () => this.onCommand('toggle-toolchain'),
+    });
+    this.actions.push({
+      id: 'feature:taskgraph',
+      label: 'Toggle Task Graph',
+      description: 'Visualize task dependencies (G)',
+      icon: '📋',
+      category: 'feature',
+      action: () => this.onCommand('toggle-taskgraph'),
+    });
+    this.actions.push({
+      id: 'feature:activity',
+      label: 'Toggle Activity Feed',
+      description: 'Scrollable event timeline (V)',
+      icon: '📜',
+      category: 'feature',
+      action: () => this.onCommand('toggle-activity'),
+    });
+    this.actions.push({
+      id: 'feature:waterfall',
+      label: 'Toggle Waterfall View',
+      description: 'Tool call trace timeline (W)',
+      icon: '📊',
+      category: 'feature',
+      action: () => this.onCommand('toggle-waterfall'),
+    });
+    this.actions.push({
+      id: 'feature:graph',
+      label: 'Toggle Agent Graph',
+      description: 'Agent relationship visualization (R)',
+      icon: '🔗',
+      category: 'feature',
+      action: () => this.onCommand('toggle-graph'),
+    });
   }
 
   /** Dynamically add agent-specific actions */

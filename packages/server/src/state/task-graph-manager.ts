@@ -147,6 +147,18 @@ export class TaskGraphManager {
   }
 
   /**
+   * Mark a task as completed (hook-sourced — TaskCompleted event).
+   * Returns true if the status actually changed.
+   */
+  processTaskCompleted(taskId: string, root: string): boolean {
+    const key = this.scopedKey(root, taskId);
+    const task = this.tasks.get(key);
+    if (!task || task.status === 'completed') return false;
+    task.status = 'completed';
+    return true;
+  }
+
+  /**
    * Remove all tasks created by a given agent.
    * Cleans up dependency references from remaining tasks.
    * Returns true if any tasks were removed.

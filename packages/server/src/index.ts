@@ -11,6 +11,7 @@ import { AgentStateManager } from './state/agent-state-manager.js';
 import { Broadcaster } from './ws/broadcaster.js';
 import { registerWsHandler } from './ws/ws-handler.js';
 import { registerApiRoutes } from './routes/api.js';
+import { HookEventManager } from './hooks/hook-event-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -29,10 +30,30 @@ export async function main() {
   });
 
   const stateManager = new AgentStateManager();
-  const broadcaster = new Broadcaster(stateManager);
+  const hookManager = new HookEventManager(stateManager);
+  const broadcaster = new Broadcaster(stateManager, hookManager);
 
-  registerWsHandler(app, stateManager, broadcaster);
+  registerWsHandler(app, stateManager, broadcaster, hookManager);
   registerApiRoutes(app, stateManager);
+
+  // Hook endpoint: receives Claude Code hook events via POST /hook
+  app.post('/hook', {
+    config: { rawBody: false },
+  }, async (req, reply) => {
+    const event = req.body as import('@agent-move/shared').HookEvent;
+    if (!event?.hook_event_name || !event?.session_id) {
+      console.warn('[hook] Received invalid hook payload:', JSON.stringify(req.body).slice(0, 200));
+      return reply.status(400).send({ error: 'Invalid hook event' });
+    }
+    console.log(`[hook] ${event.hook_event_name} | session=${event.session_id.slice(0, 12)} | tool=${event.tool_name ?? '-'}`);
+    // Broadcast to all WS clients that hooks are active
+    broadcaster.broadcastHooksStatus();
+    const result = await hookManager.handleEvent(event);
+    if (result) {
+      return reply.status(result.statusCode).send(result.body);
+    }
+    return reply.status(200).send({ ok: true });
+  });
 
   // SPA fallback: serve index.html for non-API, non-WS routes
   app.setNotFoundHandler((_req, reply) => {

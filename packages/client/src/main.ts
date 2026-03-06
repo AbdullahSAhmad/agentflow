@@ -29,6 +29,12 @@ import { ThemeManager } from './world/themes/theme-manager.js';
 import { ZoneAnnotations } from './ui/zone-annotations.js';
 import { ToolChainPanel } from './ui/tool-chain-panel.js';
 import { TaskGraphPanel } from './ui/task-graph-panel.js';
+import { PermissionPanel } from './ui/permission-panel.js';
+import { NotificationPanel } from './ui/notification-panel.js';
+import { ActivityFeed } from './ui/activity-feed.js';
+import { WaterfallPanel } from './ui/waterfall-panel.js';
+import { RelationshipGraph } from './ui/relationship-graph.js';
+import { AgentHoverBar } from './ui/agent-hover-bar.js';
 
 async function main() {
   const appEl = document.getElementById('app')!;
@@ -82,6 +88,31 @@ async function main() {
     updateFocusIndicator();
   });
 
+  // ── Agent Hover Bar (quick actions on sprite hover) ──
+  const hoverBar = new AgentHoverBar(store);
+  hoverBar.setFocusHandler((agentId) => {
+    agentManager.setFocusAgent(agentId);
+    focusModeActive = true;
+    updateFocusIndicator();
+  });
+  hoverBar.setDetailHandler((agentId) => {
+    detailPanel.open(agentId);
+    agentManager.setFocusAgent(agentId);
+    focusModeActive = true;
+    updateFocusIndicator();
+  });
+  agentManager.setHoverHandler((agentId, x, y) => {
+    if (agentId) {
+      // Convert world coords to screen coords
+      const root = world.root;
+      const screenX = x * root.scale.x + root.x;
+      const screenY = y * root.scale.y + root.y;
+      hoverBar.show(agentId, screenX, screenY);
+    } else {
+      hoverBar.hide();
+    }
+  });
+
   // Init timeline
   const timeline = new Timeline(store);
   timeline.setReplayCallback((agents) => {
@@ -104,6 +135,21 @@ async function main() {
 
   // ── Zone Annotations ──
   const zoneAnnotations = new ZoneAnnotations();
+
+  // ── Activity Feed (in right panel) ──
+  const activityFeed = new ActivityFeed(store, rightPanelContent);
+
+  // ── Waterfall Trace View (in right panel) ──
+  const waterfallPanel = new WaterfallPanel(store, rightPanelContent);
+
+  // ── Agent Relationship Graph (in right panel) ──
+  const relationshipGraph = new RelationshipGraph(store, rightPanelContent);
+
+  // ── Permission Panel (floating) ──
+  const permissionPanel = new PermissionPanel(store);
+
+  // ── Notification Panel ──
+  const notificationPanel = new NotificationPanel(store);
 
   // ── Toast Notifications ──
   const toasts = new ToastManager(store);
@@ -134,6 +180,9 @@ async function main() {
   overlay.setCustomizationLookup(custLookup);
   leaderboard.setCustomizationLookup(custLookup);
   analytics.setCustomizationLookup(custLookup);
+  waterfallPanel.setCustomizationLookup(custLookup);
+  relationshipGraph.setCustomizationLookup(custLookup);
+  activityFeed.setCustomizationLookup(custLookup);
   customizer.setChangeHandler((agentId, data) => {
     agentManager.applyCustomization(agentId, data.displayName, data.colorIndex);
     if (detailPanel.currentAgentId === agentId) {
@@ -196,6 +245,9 @@ async function main() {
     if (currentTab === 'leaderboard') leaderboard.hide();
     if (currentTab === 'toolchain') toolChainPanel.hide();
     if (currentTab === 'taskgraph') taskGraphPanel.hide();
+    if (currentTab === 'activity') activityFeed.hide();
+    if (currentTab === 'waterfall') waterfallPanel.hide();
+    if (currentTab === 'graph') relationshipGraph.hide();
 
     currentTab = tab;
 
@@ -215,6 +267,9 @@ async function main() {
         leaderboard: 'Leaderboard',
         toolchain: 'Tool Chains',
         taskgraph: 'Task Graph',
+        activity: 'Activity Feed',
+        waterfall: 'Waterfall',
+        graph: 'Agent Graph',
       };
       rightPanelTitle.textContent = titles[tab] ?? tab;
 
@@ -222,6 +277,9 @@ async function main() {
       else if (tab === 'leaderboard') leaderboard.show();
       else if (tab === 'toolchain') toolChainPanel.show();
       else if (tab === 'taskgraph') taskGraphPanel.show();
+      else if (tab === 'activity') activityFeed.show();
+      else if (tab === 'waterfall') waterfallPanel.show();
+      else if (tab === 'graph') relationshipGraph.show();
     }
   }
 
@@ -329,6 +387,27 @@ async function main() {
           topBar.setActiveTab('taskgraph');
         }
         break;
+      case 'toggle-activity':
+        if (currentTab === 'activity') {
+          topBar.setActiveTab('monitor');
+        } else {
+          topBar.setActiveTab('activity');
+        }
+        break;
+      case 'toggle-waterfall':
+        if (currentTab === 'waterfall') {
+          topBar.setActiveTab('monitor');
+        } else {
+          topBar.setActiveTab('waterfall');
+        }
+        break;
+      case 'toggle-graph':
+        if (currentTab === 'graph') {
+          topBar.setActiveTab('monitor');
+        } else {
+          topBar.setActiveTab('graph');
+        }
+        break;
     }
   });
 
@@ -370,6 +449,13 @@ async function main() {
       sound.muted = false;
     }
     updateMuteIcon();
+  });
+
+  // Notification button
+  const notifBtn = document.getElementById('notif-btn')!;
+  notifBtn.appendChild(notificationPanel.getBadgeElement());
+  notifBtn.addEventListener('click', () => {
+    notificationPanel.toggle();
   });
 
   // Shortcuts button
@@ -469,6 +555,27 @@ async function main() {
           topBar.setActiveTab('monitor');
         } else {
           topBar.setActiveTab('taskgraph');
+        }
+        break;
+      case 'v':
+        if (currentTab === 'activity') {
+          topBar.setActiveTab('monitor');
+        } else {
+          topBar.setActiveTab('activity');
+        }
+        break;
+      case 'w':
+        if (currentTab === 'waterfall') {
+          topBar.setActiveTab('monitor');
+        } else {
+          topBar.setActiveTab('waterfall');
+        }
+        break;
+      case 'r':
+        if (currentTab === 'graph') {
+          topBar.setActiveTab('monitor');
+        } else {
+          topBar.setActiveTab('graph');
         }
         break;
     }

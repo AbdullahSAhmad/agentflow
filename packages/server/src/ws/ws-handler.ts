@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentStateManager } from '../state/agent-state-manager.js';
 import type { Broadcaster } from './broadcaster.js';
+import type { HookEventManager } from '../hooks/hook-event-manager.js';
 
 export function registerWsHandler(
   app: FastifyInstance,
   stateManager: AgentStateManager,
-  broadcaster: Broadcaster
+  broadcaster: Broadcaster,
+  hookManager?: HookEventManager
 ) {
   app.get('/ws', { websocket: true }, (socket, _req) => {
     console.log('WebSocket client connected');
@@ -36,6 +38,18 @@ export function registerWsHandler(
             type: 'taskgraph:snapshot',
             data: stateManager.getTaskGraphSnapshot(),
             timestamp: Date.now(),
+          });
+        } else if (hookManager && msg.type === 'permission:approve') {
+          hookManager.resolvePermission(msg.permissionId, {
+            behavior: 'allow',
+            updatedInput: msg.updatedInput,
+          });
+        } else if (hookManager && msg.type === 'permission:deny') {
+          hookManager.resolvePermission(msg.permissionId, { behavior: 'deny' });
+        } else if (hookManager && msg.type === 'permission:approve-always') {
+          hookManager.resolvePermission(msg.permissionId, {
+            behavior: 'allow',
+            updatedPermissions: msg.rules,
           });
         }
       } catch {

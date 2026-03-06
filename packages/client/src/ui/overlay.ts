@@ -9,6 +9,11 @@ interface TokenHistory {
   samples: number[];
 }
 
+interface ToolMetrics {
+  toolTimestamps: number[];
+  failCount: number;
+}
+
 export class Overlay {
   private store: StateStore;
   private agentListEl: HTMLElement;
@@ -23,6 +28,8 @@ export class Overlay {
 
   private tokenHistory = new Map<string, TokenHistory>();
   private sparklineSampleTimer: ReturnType<typeof setInterval>;
+
+  private _metrics = new Map<string, ToolMetrics>();
 
   setAgentClickHandler(handler: (agentId: string) => void): void {
     this.onAgentClick = handler;
@@ -53,7 +60,7 @@ export class Overlay {
       }
     };
     this.store.on('agent:spawn', this.scheduleRender);
-    this.store.on('agent:update', this.scheduleRender);
+    this.store.on('agent:update', this.onAgentUpdate);
     this.store.on('agent:idle', this.scheduleRender);
     this.store.on('agent:shutdown', this.scheduleRender);
     this.store.on('state:reset', this.scheduleRender);
@@ -61,6 +68,36 @@ export class Overlay {
     this.refreshTimer = setInterval(this.scheduleRender, 500);
     this.sparklineSampleTimer = setInterval(() => this.sampleSparklines(), 2000);
   }
+
+  private onAgentUpdate = (agent: AgentState): void => {
+    // Track tool velocity metrics
+    let metrics = this._metrics.get(agent.id);
+    if (!metrics) {
+      metrics = { toolTimestamps: [], failCount: 0 };
+      this._metrics.set(agent.id, metrics);
+    }
+
+    if (agent.currentTool) {
+      const now = Date.now();
+      const lastTs = metrics.toolTimestamps.length > 0
+        ? metrics.toolTimestamps[metrics.toolTimestamps.length - 1]
+        : 0;
+      // Dedup within 1s
+      if (now - lastTs > 1000) {
+        metrics.toolTimestamps.push(now);
+      }
+    }
+
+    if (agent.lastToolOutcome === 'failure') {
+      metrics.failCount++;
+    }
+
+    // Clear timestamps older than 5 minutes
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    metrics.toolTimestamps = metrics.toolTimestamps.filter(ts => ts >= cutoff);
+
+    this.scheduleRender();
+  };
 
   private sampleSparklines(): void {
     const agents = this.store.getAgents();
@@ -75,6 +112,10 @@ export class Overlay {
     }
     for (const id of this.tokenHistory.keys()) {
       if (!agents.has(id)) this.tokenHistory.delete(id);
+    }
+    // Clean up metrics for removed agents
+    for (const id of this._metrics.keys()) {
+      if (!agents.has(id)) this._metrics.delete(id);
     }
   }
 
@@ -366,6 +407,11 @@ export class Overlay {
       const agentId = (canvas as HTMLElement).dataset.agentId;
       if (agentId) this.drawSparkline(canvas as HTMLCanvasElement, agentId);
     });
+
+    this.agentListEl.querySelectorAll('.agent-sparkline').forEach((canvas) => {
+      const agentId = (canvas as HTMLElement).dataset.agentId;
+      if (agentId) this.drawToolVelocitySparkline(canvas as HTMLCanvasElement, agentId);
+    });
   }
 
   private renderAgentWithSubs(
@@ -407,6 +453,21 @@ export class Overlay {
     return html;
   }
 
+  private getHealthColor(agent: AgentState): string {
+    if (agent.isDone || agent.isIdle) return '#888'; // gray
+    const metrics = this._metrics.get(agent.id);
+    if (metrics && metrics.failCount > 0) {
+      // Check recent fail rate: if failCount is high relative to tool usage, red
+      const recentToolCount = metrics.toolTimestamps.length;
+      if (recentToolCount > 0 && metrics.failCount / recentToolCount > 0.3) {
+        return '#ef4444'; // red
+      }
+      return '#eab308'; // yellow - some errors
+    }
+    // Active and healthy
+    return '#22c55e'; // green
+  }
+
   private renderCard(agent: AgentState, isChild = false, subCount = 0): string {
     const custom = this._customizationLookup?.(agent);
     const colorIndex = custom?.colorIndex ?? agent.colorIndex;
@@ -435,6 +496,9 @@ export class Overlay {
     // Status dot instead of opacity
     const statusClass = agent.isDone ? 'done' : agent.isIdle ? 'idle' : 'active';
 
+    // Health dot color
+    const healthColor = this.getHealthColor(agent);
+
     return `<div class="agent-card${childClass}${doneClass}" data-agent-id="${agent.id}" style="border-left: 3px solid ${borderColor};">
       <div class="card-top-row">
         <div class="name">
@@ -442,6 +506,10 @@ export class Overlay {
           ${isChild ? '<span class="child-connector">&#8627;</span>' : ''}${escapeHtml(name)}${this.roleBadge(agent.role)}${projectBadge}${doneBadge}${subBadge}
         </div>
         <div class="card-actions">
+          <div class="agent-metrics">
+            <canvas class="agent-sparkline" data-agent-id="${agent.id}" data-color-index="${colorIndex}" width="60" height="16"></canvas>
+            <span class="agent-health-dot" style="background: ${healthColor};"></span>
+          </div>
           <canvas class="sparkline-canvas" data-agent-id="${agent.id}" width="60" height="20"></canvas>
         </div>
       </div>
@@ -449,6 +517,61 @@ export class Overlay {
       <div class="zone">${zone?.icon ?? ''} ${zoneName} · ${toolText}</div>
       <div class="card-tokens">${tokens}</div>
     </div>`;
+  }
+
+  private getToolVelocityBars(agentId: string): number[] {
+    const metrics = this._metrics.get(agentId);
+    if (!metrics || metrics.toolTimestamps.length === 0) return [];
+
+    const now = Date.now();
+    const windowSize = 30_000; // 30 seconds per window
+    const numWindows = 10;
+    const bars: number[] = new Array(numWindows).fill(0);
+
+    for (const ts of metrics.toolTimestamps) {
+      const age = now - ts;
+      const windowIndex = Math.floor(age / windowSize);
+      if (windowIndex >= 0 && windowIndex < numWindows) {
+        // Reverse so index 0 = oldest, index 9 = most recent
+        bars[numWindows - 1 - windowIndex]++;
+      }
+    }
+
+    return bars;
+  }
+
+  private drawToolVelocitySparkline(canvas: HTMLCanvasElement, agentId: string): void {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const bars = this.getToolVelocityBars(agentId);
+    if (bars.length === 0) return;
+
+    const maxVal = Math.max(...bars, 1);
+    const numBars = 10;
+    const barWidth = Math.floor(w / numBars) - 1;
+    const gap = 1;
+
+    // Get the agent palette color
+    const colorIndexStr = canvas.dataset.colorIndex;
+    const colorIndex = colorIndexStr ? parseInt(colorIndexStr, 10) : 0;
+    const palette = AGENT_PALETTES[colorIndex % AGENT_PALETTES.length];
+    const barColor = hexToCss(palette.body);
+
+    for (let i = 0; i < numBars; i++) {
+      const val = bars[i] ?? 0;
+      const barHeight = Math.max(val > 0 ? 2 : 0, Math.round((val / maxVal) * (h - 2)));
+      const x = i * (barWidth + gap);
+      const y = h - barHeight;
+      ctx.fillStyle = barColor;
+      ctx.globalAlpha = val > 0 ? 0.8 : 0.15;
+      ctx.fillRect(x, y, barWidth, barHeight);
+    }
+    ctx.globalAlpha = 1.0;
   }
 
   private drawSparkline(canvas: HTMLCanvasElement, agentId: string): void {
@@ -510,7 +633,7 @@ export class Overlay {
     clearInterval(this.refreshTimer);
     clearInterval(this.sparklineSampleTimer);
     this.store.off('agent:spawn', this.scheduleRender);
-    this.store.off('agent:update', this.scheduleRender);
+    this.store.off('agent:update', this.onAgentUpdate);
     this.store.off('agent:idle', this.scheduleRender);
     this.store.off('agent:shutdown', this.scheduleRender);
     this.store.off('state:reset', this.scheduleRender);

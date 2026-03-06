@@ -110,6 +110,17 @@ export class AgentSprite {
   // Done sparkles
   private sparkles: { gfx: Graphics; phase: number }[] = [];
 
+  // Compacting badge (context compaction in progress)
+  private compactBadge: Container | null = null;
+  private compactBadgeBg: Graphics | null = null;
+  private compactBadgeText: Text | null = null;
+  private compactPulseTimer = 0;
+  private _isCompacting = false;
+
+  // Tool outcome flash (success = green, failure = red)
+  private outcomeFlash: { outcome: 'success' | 'failure'; timer: number } | null = null;
+  private static OUTCOME_FLASH_DURATION = 700;
+
   // Anomaly badge
   private anomalyBadge: Container | null = null;
   private anomalyBadgeBg: Graphics | null = null;
@@ -676,6 +687,59 @@ export class AgentSprite {
       .stroke({ color: 0xffcc80, width: 1.5, alpha: alpha * 0.7 });
   }
 
+  /** Show or hide context-compaction badge */
+  setCompacting(compacting: boolean): void {
+    this._isCompacting = compacting;
+
+    if (!compacting) {
+      if (this.compactBadge) this.compactBadge.visible = false;
+      return;
+    }
+
+    if (!this.compactBadge) {
+      this.compactBadge = new Container();
+
+      this.compactBadgeBg = new Graphics();
+      this.compactBadge.addChild(this.compactBadgeBg);
+
+      this.compactBadgeText = new Text({
+        text: '\u21BA COMPACT',
+        style: new TextStyle({
+          fontSize: 8,
+          fontFamily: "'Segoe UI', sans-serif",
+          fill: 0xffffff,
+          fontWeight: '700',
+          letterSpacing: 0.3,
+        }),
+      });
+      this.compactBadgeText.anchor.set(0.5, 0.5);
+      this.compactBadge.addChild(this.compactBadgeText);
+
+      // Position below the project label to avoid overlapping speech bubble / other badges
+      this.compactBadge.position.set(0, this.spriteHeight / 2 + 36);
+      this.container.addChild(this.compactBadge);
+    }
+
+    this.drawCompactBadge(1);
+    this.compactBadge.visible = true;
+  }
+
+  private drawCompactBadge(alpha: number): void {
+    if (!this.compactBadgeBg) return;
+    const w = 58;
+    const h = 13;
+    this.compactBadgeBg.clear();
+    this.compactBadgeBg
+      .roundRect(-w / 2, -h / 2, w, h, 3)
+      .fill({ color: 0x7c3aed, alpha: alpha * 0.9 })
+      .stroke({ color: 0xa78bfa, width: 1, alpha: alpha * 0.7 });
+  }
+
+  /** Flash a brief success (green) or failure (red) ring around the agent */
+  flashOutcome(outcome: 'success' | 'failure'): void {
+    this.outcomeFlash = { outcome, timer: AgentSprite.OUTCOME_FLASH_DURATION };
+  }
+
   /** Bump activity level (called on each tool use) */
   bumpActivity(): void {
     this.activityLevel = Math.min(1, this.activityLevel + 0.35);
@@ -865,6 +929,10 @@ export class AgentSprite {
       }
     }
 
+    // Activity ring (skip normal logic while outcome flash is active)
+    if (this.outcomeFlash) {
+      // Handled below in outcome flash section
+    } else
     // Activity ring (orange when waiting for user, green otherwise)
     if (this._isWaiting) {
       // Persistent pulsing orange ring when waiting for user input
@@ -917,6 +985,39 @@ export class AgentSprite {
       this.planPulseTimer += dt * 0.003;
       const pulseAlpha = 0.7 + 0.3 * Math.sin(this.planPulseTimer);
       this.drawPlanBadge(pulseAlpha);
+    }
+
+    // Compacting badge pulse
+    if (this._isCompacting && this.compactBadge?.visible) {
+      this.compactPulseTimer += dt * 0.003;
+      const pulseAlpha = 0.65 + 0.35 * Math.sin(this.compactPulseTimer * 1.5);
+      this.drawCompactBadge(pulseAlpha);
+      // Gently rotate the ↺ symbol via badge scale oscillation
+      const scaleX = 1 + 0.04 * Math.sin(this.compactPulseTimer * 2);
+      this.compactBadge.scale.set(scaleX, 1);
+    }
+
+    // Outcome flash (brief green or red ring)
+    if (this.outcomeFlash) {
+      this.outcomeFlash.timer -= dt;
+      if (this.outcomeFlash.timer <= 0) {
+        this.outcomeFlash = null;
+        this.activityRing.visible = false;
+      } else {
+        const progress = this.outcomeFlash.timer / AgentSprite.OUTCOME_FLASH_DURATION;
+        const alpha = progress * 0.85;
+        const radius = this.spriteHeight / 2 + 6 + (1 - progress) * 8;
+        const color = this.outcomeFlash.outcome === 'success' ? 0x4ade80 : 0xf87171;
+        this.activityRing.visible = true;
+        this.activityRing.clear();
+        this.activityRing
+          .circle(0, 0, radius)
+          .stroke({ color, width: 3, alpha });
+        // Second expanding ring
+        this.activityRing
+          .circle(0, 0, radius + 4)
+          .stroke({ color, width: 1.5, alpha: alpha * 0.4 });
+      }
     }
 
     // Anomaly badge pulse

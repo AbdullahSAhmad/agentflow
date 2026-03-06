@@ -16,6 +16,8 @@ interface ManagedAgent {
   state: AgentState;
   /** Whether we already notified for this agent's waiting state (avoid spamming) */
   notifiedWaiting: boolean;
+  /** Last observed tool outcome to detect changes */
+  lastSeenOutcome: 'success' | 'failure' | null;
 }
 
 /** Tool name -> icon mapping for speech bubbles */
@@ -181,6 +183,7 @@ export class AgentManager {
       });
     }
 
+
     // Text/speech message
     if (agent.speechText) {
       messages.push({
@@ -245,7 +248,7 @@ export class AgentManager {
       sprite.setProjectName(agent.projectName);
     }
 
-    this.agents.set(agent.id, { sprite, state: agent, notifiedWaiting: false });
+    this.agents.set(agent.id, { sprite, state: agent, notifiedWaiting: false, lastSeenOutcome: null });
     this.world.addAgent(sprite.container);
 
     // Move to the agent's current zone
@@ -284,6 +287,13 @@ export class AgentManager {
 
     managed.sprite.setIdle(false);
     managed.sprite.setPlanning(agent.isPlanning);
+    managed.sprite.setCompacting(agent.phase === 'compacting');
+
+    // Flash outcome ring when tool outcome changes
+    if (agent.lastToolOutcome && agent.lastToolOutcome !== managed.lastSeenOutcome) {
+      managed.sprite.flashOutcome(agent.lastToolOutcome);
+    }
+    managed.lastSeenOutcome = agent.lastToolOutcome;
 
     // Waiting for user input — badge, sound, and notification
     managed.sprite.setWaiting(agent.isWaitingForUser);
@@ -371,6 +381,7 @@ export class AgentManager {
     managed.sprite.moveTo(target.x, target.y);
     managed.sprite.setIdle(true);
     managed.sprite.setWaiting(false);
+    managed.sprite.setCompacting(false);
     managed.sprite.clearSpeech();
     managed.notifiedWaiting = false;
     this.updateDocTitle();

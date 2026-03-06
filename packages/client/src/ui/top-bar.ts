@@ -16,7 +16,7 @@ interface TokenSample {
 const VELOCITY_WINDOW = 60_000;
 const SAMPLE_INTERVAL = 2_000;
 
-export type NavTab = 'monitor' | 'analytics' | 'leaderboard' | 'toolchain' | 'taskgraph';
+export type NavTab = 'monitor' | 'analytics' | 'leaderboard' | 'toolchain' | 'taskgraph' | 'activity' | 'waterfall' | 'graph';
 
 export class TopBar {
   private store: StateStore;
@@ -27,13 +27,21 @@ export class TopBar {
   private onTabChange: ((tab: NavTab) => void) | null = null;
 
   private connectionDot: HTMLElement;
+  private hooksDot: HTMLElement;
   private focusBar: HTMLElement;
+  private hookEventCount = 0;
 
   constructor(store: StateStore) {
     this.store = store;
 
     this.connectionDot = document.getElementById('connection-dot')!;
+    this.hooksDot = document.getElementById('hooks-dot')!;
     this.focusBar = document.getElementById('focus-sub-bar')!;
+
+    // Track hook event count
+    store.on('hooks:status', () => { this.hookEventCount++; });
+    store.on('permission:request', () => { this.hookEventCount++; });
+    store.on('permission:resolved', () => { this.hookEventCount++; });
 
     // Nav tabs
     document.querySelectorAll('.tb-nav-tab').forEach(tab => {
@@ -146,6 +154,19 @@ export class TopBar {
 
     const activeDot = document.querySelector('#tb-active .tb-stat-dot') as HTMLElement;
     if (activeDot) activeDot.classList.toggle('pulse', active > 0);
+
+    // Hooks status dot
+    const pendingCount = this.store.getPendingPermissions().length;
+    const hooksActive = this.store.isHooksActive();
+    this.hooksDot.classList.toggle('hooks-pending', pendingCount > 0);
+    this.hooksDot.classList.toggle('hooks-active', hooksActive && pendingCount === 0);
+    if (pendingCount > 0) {
+      this.hooksDot.title = `Hooks: ${pendingCount} permission${pendingCount > 1 ? 's' : ''} pending | ${this.hookEventCount} events received`;
+    } else if (hooksActive) {
+      this.hooksDot.title = `Hooks: active | ${this.hookEventCount} events received`;
+    } else {
+      this.hooksDot.title = 'Hooks: not detected (run `agent-move hooks install`)';
+    }
   }
 
   dispose(): void {

@@ -35,6 +35,7 @@ export class ToastManager {
     this.store.on('agent:idle', (agent) => this.onIdle(agent));
     this.store.on('agent:shutdown', (agentId) => this.onShutdown(agentId));
     this.store.on('anomaly:alert', (anomaly) => this.onAnomaly(anomaly));
+    this.store.on('task:completed', ({ taskSubject }) => this.onTaskCompleted(taskSubject));
   }
 
   private getName(agent: AgentState): string {
@@ -64,6 +65,10 @@ export class ToastManager {
   private onShutdown(agentId: string): void {
     // Agent already removed from store at this point — use minimal info
     this.show(`Agent shut down`, 'shutdown');
+  }
+
+  private onTaskCompleted(taskSubject: string): void {
+    this.show(`\u2713 Task completed: <strong>${escapeHtml(taskSubject)}</strong>`, 'done');
   }
 
   private static readonly ANOMALY_ICONS: Record<string, string> = {

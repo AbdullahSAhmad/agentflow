@@ -277,6 +277,11 @@ export class AnalyticsPanel {
       </div>
 
       <div class="analytics-section">
+        <div class="section-title">Cost Efficiency</div>
+        ${this.renderCostEfficiency(snapshots, totalCost)}
+      </div>
+
+      <div class="analytics-section">
         <div class="section-title">Session Duration</div>
         ${this.renderSessionDurations(snapshots)}
       </div>
@@ -417,6 +422,46 @@ export class AnalyticsPanel {
         </div>
       </div>`;
     }).join('');
+  }
+
+  private renderCostEfficiency(snapshots: AgentSnapshot[], totalCost: number): string {
+    const totalToolUses = Array.from(this.toolCounts.values()).reduce((a, b) => a + b, 0);
+    const costPerTool = totalToolUses > 0 ? totalCost / totalToolUses : 0;
+    const totalTokens = snapshots.reduce((s, a) => s + a.inputTokens + a.outputTokens, 0);
+    const tokensPerTool = totalToolUses > 0 ? totalTokens / totalToolUses : 0;
+
+    // Cost per agent per minute
+    const now = Date.now();
+    const agentRates = snapshots
+      .map(a => {
+        const mins = Math.max((now - a.spawnedAt) / 60_000, 0.5);
+        const cost = this.calculateCost(a);
+        return { name: a.name, rate: cost / mins, cost };
+      })
+      .filter(a => a.cost > 0.001)
+      .sort((a, b) => b.rate - a.rate);
+
+    return `
+      <div class="analytics-cards" style="margin-bottom:8px">
+        <div class="analytics-card">
+          <div class="card-label">Cost / Tool Use</div>
+          <div class="card-value">$${costPerTool.toFixed(4)}</div>
+          <div class="card-sub">${totalToolUses} total uses</div>
+        </div>
+        <div class="analytics-card">
+          <div class="card-label">Tokens / Tool Use</div>
+          <div class="card-value">${formatTokens(Math.round(tokensPerTool))}</div>
+          <div class="card-sub">${formatTokens(totalTokens)} total</div>
+        </div>
+      </div>
+      ${agentRates.length > 0 ? `<div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;">Cost rate ($/min)</div>` +
+        agentRates.slice(0, 5).map(a =>
+          `<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--text-secondary)">
+            <span>${escapeHtml(a.name)}</span>
+            <span style="color:var(--text-dim)">$${a.rate.toFixed(4)}/min</span>
+          </div>`
+        ).join('') : ''}
+    `;
   }
 
   private renderSessionDurations(snapshots: AgentSnapshot[]): string {

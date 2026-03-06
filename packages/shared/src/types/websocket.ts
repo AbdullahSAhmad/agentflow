@@ -1,7 +1,8 @@
-import type { AgentState, ActivityEntry } from './agent.js';
+import type { AgentState, ActivityEntry, AgentPhase } from './agent.js';
 import type { AnomalyEvent } from './anomaly.js';
 import type { ToolChainData } from './tool-chain.js';
 import type { TaskGraphData } from './task-graph.js';
+import type { PendingPermission } from './hooks.js';
 
 /** Server → Client messages */
 export type ServerMessage =
@@ -14,7 +15,12 @@ export type ServerMessage =
   | TimelineSnapshotMessage
   | AnomalyAlertMessage
   | ToolChainSnapshotMessage
-  | TaskGraphSnapshotMessage;
+  | TaskGraphSnapshotMessage
+  | PermissionRequestMessage
+  | PermissionResolvedMessage
+  | SessionPhaseMessage
+  | HooksStatusMessage
+  | TaskCompletedNotification;
 
 export interface FullStateMessage {
   type: 'full_state';
@@ -84,8 +90,54 @@ export interface TaskGraphSnapshotMessage {
   timestamp: number;
 }
 
+/** A pending permission request pushed to clients for approval */
+export interface PermissionRequestMessage {
+  type: 'permission:request';
+  permission: PendingPermission;
+  timestamp: number;
+}
+
+/** A permission request was resolved (from terminal or UI) */
+export interface PermissionResolvedMessage {
+  type: 'permission:resolved';
+  permissionId: string;
+  decision: 'allow' | 'deny';
+  timestamp: number;
+}
+
+/** Broadcast whenever any hook event is received — lets the client know hooks are working */
+export interface HooksStatusMessage {
+  type: 'hooks:status';
+  timestamp: number;
+}
+
+/** Agent session phase changed (idle / running / compacting) */
+export interface SessionPhaseMessage {
+  type: 'session:phase';
+  sessionId: string;
+  agentId: string;
+  phase: AgentPhase;
+  timestamp: number;
+}
+
+/** Fired when a background task completes (hook-sourced) */
+export interface TaskCompletedNotification {
+  type: 'task:completed';
+  taskId: string;
+  taskSubject: string;
+  agentId: string;
+  timestamp: number;
+}
+
 /** Client → Server messages */
-export type ClientMessage = PingMessage | RequestHistoryMessage | RequestToolChainMessage | RequestTaskGraphMessage;
+export type ClientMessage =
+  | PingMessage
+  | RequestHistoryMessage
+  | RequestToolChainMessage
+  | RequestTaskGraphMessage
+  | PermissionApproveMessage
+  | PermissionDenyMessage
+  | PermissionApproveAlwaysMessage;
 
 export interface PingMessage {
   type: 'ping';
@@ -102,4 +154,25 @@ export interface RequestToolChainMessage {
 
 export interface RequestTaskGraphMessage {
   type: 'request:taskgraph';
+}
+
+/** Approve a pending permission request */
+export interface PermissionApproveMessage {
+  type: 'permission:approve';
+  permissionId: string;
+  /** Modified tool input (e.g. AskUserQuestion answers, ExitPlanMode feedback) */
+  updatedInput?: unknown;
+}
+
+/** Deny a pending permission request */
+export interface PermissionDenyMessage {
+  type: 'permission:deny';
+  permissionId: string;
+}
+
+/** Approve with "always allow" rules */
+export interface PermissionApproveAlwaysMessage {
+  type: 'permission:approve-always';
+  permissionId: string;
+  rules: unknown[];
 }

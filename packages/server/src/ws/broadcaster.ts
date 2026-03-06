@@ -1,11 +1,29 @@
 import type { WebSocket } from 'ws';
 import type { AgentStateManager } from '../state/agent-state-manager.js';
-import type { ServerMessage, AgentEvent, AnomalyEvent, TaskGraphData, ToolChainData } from '@agent-move/shared';
+import type { HookEventManager } from '../hooks/hook-event-manager.js';
+import type { ServerMessage, AgentEvent, AnomalyEvent, TaskGraphData, ToolChainData, PendingPermission } from '@agent-move/shared';
 
 export class Broadcaster {
   private clients = new Set<WebSocket>();
 
-  constructor(private stateManager: AgentStateManager) {
+  constructor(private stateManager: AgentStateManager, hookManager?: HookEventManager) {
+    if (hookManager) {
+      hookManager.on('permission:request', (permission: PendingPermission) => {
+        this.broadcast({
+          type: 'permission:request',
+          permission,
+          timestamp: Date.now(),
+        });
+      });
+      hookManager.on('permission:resolved', (payload: { permissionId: string; decision: 'allow' | 'deny' }) => {
+        this.broadcast({
+          type: 'permission:resolved',
+          permissionId: payload.permissionId,
+          decision: payload.decision,
+          timestamp: Date.now(),
+        });
+      });
+    }
     // Forward all agent events to connected clients
     for (const eventType of ['agent:spawn', 'agent:update', 'agent:idle', 'agent:shutdown'] as const) {
       stateManager.on(eventType, (event: AgentEvent) => {
@@ -49,6 +67,17 @@ export class Broadcaster {
         type: 'taskgraph:snapshot',
         data: payload.data,
         timestamp: payload.timestamp,
+      });
+    });
+
+    // Forward task completion notifications (hook-sourced)
+    stateManager.on('task:completed', (payload: { taskId: string; taskSubject: string; agentId: string }) => {
+      this.broadcast({
+        type: 'task:completed',
+        taskId: payload.taskId,
+        taskSubject: payload.taskSubject,
+        agentId: payload.agentId,
+        timestamp: Date.now(),
       });
     });
   }
@@ -100,6 +129,11 @@ export class Broadcaster {
         this.clients.delete(ws);
       }
     }
+  }
+
+  /** Broadcast that hook events are being received */
+  broadcastHooksStatus(): void {
+    this.broadcast({ type: 'hooks:status', timestamp: Date.now() });
   }
 
   /** Send a message to a specific client */

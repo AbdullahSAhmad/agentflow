@@ -2,6 +2,9 @@ import type { ZoneId } from './zone.js';
 
 export type AgentRole = 'main' | 'subagent' | 'team-lead' | 'team-member';
 
+/** Precise session lifecycle phase (hook-sourced when available, inferred otherwise) */
+export type AgentPhase = 'idle' | 'running' | 'compacting';
+
 export interface AgentState {
   id: string;
   sessionId: string;
@@ -31,6 +34,10 @@ export interface AgentState {
   isPlanning: boolean;
   /** Agent is blocked waiting for user input (AskUserQuestion, permission confirmation) */
   isWaitingForUser: boolean;
+  /** Precise lifecycle phase. Set by hook events when available; mirrors isIdle otherwise. */
+  phase: AgentPhase;
+  /** Result of the most recent tool execution (hook-sourced) */
+  lastToolOutcome: 'success' | 'failure' | null;
   totalInputTokens: number;
   totalOutputTokens: number;
   cacheReadTokens: number;

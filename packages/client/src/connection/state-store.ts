@@ -1,4 +1,4 @@
-import type { AgentState, ServerMessage, ActivityEntry, TimelineEvent, AnomalyEvent, ToolChainData, TaskGraphData } from '@agent-move/shared';
+import type { AgentState, ServerMessage, ActivityEntry, TimelineEvent, AnomalyEvent, ToolChainData, TaskGraphData, PendingPermission, TaskCompletedNotification } from '@agent-move/shared';
 import type { WsClient } from './ws-client.js';
 
 export type ConnectionStatus = 'connected' | 'disconnected';
@@ -14,7 +14,11 @@ export type StoreEventType =
   | 'timeline:snapshot'
   | 'anomaly:alert'
   | 'toolchain:snapshot'
-  | 'taskgraph:snapshot';
+  | 'taskgraph:snapshot'
+  | 'permission:request'
+  | 'permission:resolved'
+  | 'hooks:status'
+  | 'task:completed';
 
 type StoreEventData = {
   'agent:spawn': AgentState;
@@ -28,6 +32,10 @@ type StoreEventData = {
   'anomaly:alert': AnomalyEvent;
   'toolchain:snapshot': ToolChainData;
   'taskgraph:snapshot': TaskGraphData;
+  'permission:request': PendingPermission;
+  'permission:resolved': { permissionId: string; decision: 'allow' | 'deny' };
+  'hooks:status': void;
+  'task:completed': { taskId: string; taskSubject: string; agentId: string };
 };
 
 type Listener<T extends StoreEventType> = (data: StoreEventData[T]) => void;
@@ -38,6 +46,8 @@ export class StateStore {
   private _connectionStatus: ConnectionStatus = 'disconnected';
   private wsClient: WsClient | null = null;
   private _timeline: TimelineEvent[] = [];
+  private _pendingPermissions = new Map<string, PendingPermission>();
+  private _lastHookActivityAt: number | null = null;
 
   get connectionStatus(): ConnectionStatus {
     return this._connectionStatus;
@@ -65,6 +75,31 @@ export class StateStore {
 
   requestTaskGraph(): void {
     this.wsClient?.send({ type: 'request:taskgraph' });
+  }
+
+  getPendingPermissions(): PendingPermission[] {
+    return Array.from(this._pendingPermissions.values());
+  }
+
+  /** Returns true if hook activity was seen in the last 60 seconds */
+  isHooksActive(): boolean {
+    return this._lastHookActivityAt !== null && Date.now() - this._lastHookActivityAt < 60_000;
+  }
+
+  private markHookActivity(): void {
+    this._lastHookActivityAt = Date.now();
+  }
+
+  approvePermission(permissionId: string, updatedInput?: unknown): void {
+    this.wsClient?.send({ type: 'permission:approve', permissionId, updatedInput });
+  }
+
+  denyPermission(permissionId: string): void {
+    this.wsClient?.send({ type: 'permission:deny', permissionId });
+  }
+
+  approvePermissionAlways(permissionId: string, rules: unknown[]): void {
+    this.wsClient?.send({ type: 'permission:approve-always', permissionId, rules });
   }
 
   getTimeline(): TimelineEvent[] {
@@ -173,6 +208,35 @@ export class StateStore {
         this.emit('taskgraph:snapshot', msg.data);
         break;
       }
+
+      case 'permission:request': {
+        this._pendingPermissions.set(msg.permission.permissionId, msg.permission);
+        this.markHookActivity();
+        this.emit('permission:request', msg.permission);
+        break;
+      }
+
+      case 'permission:resolved': {
+        this._pendingPermissions.delete(msg.permissionId);
+        this.emit('permission:resolved', { permissionId: msg.permissionId, decision: msg.decision });
+        break;
+      }
+
+      case 'hooks:status': {
+        this.markHookActivity();
+        this.emit('hooks:status', undefined);
+        break;
+      }
+
+      case 'task:completed': {
+        const n = msg as TaskCompletedNotification;
+        this.emit('task:completed', { taskId: n.taskId, taskSubject: n.taskSubject, agentId: n.agentId });
+        break;
+      }
+
+      case 'session:phase':
+        // Phase changes are reflected via agent:update events; no separate handling needed.
+        break;
     }
   }
 }

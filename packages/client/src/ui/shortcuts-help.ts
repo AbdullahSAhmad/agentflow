@@ -56,6 +56,11 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: '`', description: 'Toggle mini-map' },
       { keys: 'L', description: 'Toggle leaderboard' },
       { keys: 'P', description: 'Cycle theme' },
+      { keys: 'C', description: 'Toggle tool chains panel' },
+      { keys: 'G', description: 'Toggle task graph panel' },
+      { keys: 'V', description: 'Toggle activity feed' },
+      { keys: 'W', description: 'Toggle waterfall trace view' },
+      { keys: 'R', description: 'Toggle agent relationship graph' },
     ],
   },
 ];
