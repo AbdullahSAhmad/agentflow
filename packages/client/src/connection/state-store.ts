@@ -1,4 +1,4 @@
-import type { AgentState, ServerMessage, ActivityEntry, TimelineEvent, AnomalyEvent, ToolChainData, TaskGraphData, PendingPermission, TaskCompletedNotification } from '@agent-move/shared';
+import type { AgentState, ServerMessage, ActivityEntry, TimelineEvent, AnomalyEvent, ToolChainData, TaskGraphData, PendingPermission, TaskCompletedNotification, Project, ProjectSession, ChatMessage, DirectoryEntry } from '@agent-move/shared';
 import type { WsClient } from './ws-client.js';
 
 export type ConnectionStatus = 'connected' | 'disconnected';
@@ -18,7 +18,14 @@ export type StoreEventType =
   | 'permission:request'
   | 'permission:resolved'
   | 'hooks:status'
-  | 'task:completed';
+  | 'task:completed'
+  | 'project:list'
+  | 'project:added'
+  | 'project:removed'
+  | 'session:status'
+  | 'chat:message'
+  | 'chat:stream'
+  | 'directory:list';
 
 type StoreEventData = {
   'agent:spawn': AgentState;
@@ -36,6 +43,13 @@ type StoreEventData = {
   'permission:resolved': { permissionId: string; decision: 'allow' | 'deny' };
   'hooks:status': void;
   'task:completed': { taskId: string; taskSubject: string; agentId: string };
+  'project:list': { projects: Project[]; sessions: ProjectSession[]; agentApiAvailable: boolean; agentApiVersion: string | null };
+  'project:added': Project;
+  'project:removed': string;
+  'session:status': ProjectSession;
+  'chat:message': ChatMessage;
+  'chat:stream': { projectId: string; chunk: string; done: boolean };
+  'directory:list': { path: string; entries: DirectoryEntry[] };
 };
 
 type Listener<T extends StoreEventType> = (data: StoreEventData[T]) => void;
@@ -48,6 +62,12 @@ export class StateStore {
   private _timeline: TimelineEvent[] = [];
   private _pendingPermissions = new Map<string, PendingPermission>();
   private _lastHookActivityAt: number | null = null;
+  private _projects = new Map<string, Project>();
+  private _sessions = new Map<string, ProjectSession>();
+  private _chatHistory = new Map<string, ChatMessage[]>();
+  private _agentApiAvailable = false;
+  private _agentApiVersion: string | null = null;
+  private _activeProjectId: string | null = null;
 
   get connectionStatus(): ConnectionStatus {
     return this._connectionStatus;
@@ -88,6 +108,46 @@ export class StateStore {
 
   private markHookActivity(): void {
     this._lastHookActivityAt = Date.now();
+  }
+
+  // ── Project methods ──
+
+  getProjects(): Project[] { return Array.from(this._projects.values()); }
+  getProject(id: string): Project | undefined { return this._projects.get(id); }
+  getSessions(): ProjectSession[] { return Array.from(this._sessions.values()); }
+  getSession(projectId: string): ProjectSession | undefined { return this._sessions.get(projectId); }
+  getChatHistory(projectId: string): ChatMessage[] { return this._chatHistory.get(projectId) ?? []; }
+  get agentApiAvailable(): boolean { return this._agentApiAvailable; }
+  get agentApiVersion(): string | null { return this._agentApiVersion; }
+  get activeProjectId(): string | null { return this._activeProjectId; }
+  set activeProjectId(id: string | null) { this._activeProjectId = id; }
+
+  requestProjects(): void {
+    this.wsClient?.send({ type: 'request:projects' });
+  }
+
+  requestDirectory(path?: string): void {
+    this.wsClient?.send({ type: 'request:directory', path: path || '' });
+  }
+
+  addProject(path: string): void {
+    this.wsClient?.send({ type: 'project:add', path });
+  }
+
+  removeProject(projectId: string): void {
+    this.wsClient?.send({ type: 'project:remove', projectId });
+  }
+
+  startSession(projectId: string): void {
+    this.wsClient?.send({ type: 'session:start', projectId });
+  }
+
+  stopSession(projectId: string): void {
+    this.wsClient?.send({ type: 'session:stop', projectId });
+  }
+
+  sendChat(projectId: string, content: string): void {
+    this.wsClient?.send({ type: 'chat:send', projectId, content });
   }
 
   approvePermission(permissionId: string, updatedInput?: unknown): void {
@@ -253,6 +313,60 @@ export class StateStore {
       case 'session:phase':
         // Phase changes are reflected via agent:update events; no separate handling needed.
         break;
+
+      case 'project:list': {
+        this._projects.clear();
+        for (const p of msg.projects) this._projects.set(p.id, p);
+        this._sessions.clear();
+        for (const s of msg.sessions) this._sessions.set(s.projectId, s);
+        this._agentApiAvailable = msg.agentApiAvailable;
+        this._agentApiVersion = msg.agentApiVersion;
+        this.emit('project:list', {
+          projects: msg.projects,
+          sessions: msg.sessions,
+          agentApiAvailable: msg.agentApiAvailable,
+          agentApiVersion: msg.agentApiVersion,
+        });
+        break;
+      }
+
+      case 'project:added': {
+        this._projects.set(msg.project.id, msg.project);
+        this.emit('project:added', msg.project);
+        break;
+      }
+
+      case 'project:removed': {
+        this._projects.delete(msg.projectId);
+        this._sessions.delete(msg.projectId);
+        this._chatHistory.delete(msg.projectId);
+        this.emit('project:removed', msg.projectId);
+        break;
+      }
+
+      case 'session:status': {
+        this._sessions.set(msg.session.projectId, msg.session);
+        this.emit('session:status', msg.session);
+        break;
+      }
+
+      case 'chat:message': {
+        const hist = this._chatHistory.get(msg.message.projectId) ?? [];
+        hist.push(msg.message);
+        this._chatHistory.set(msg.message.projectId, hist);
+        this.emit('chat:message', msg.message);
+        break;
+      }
+
+      case 'chat:stream': {
+        this.emit('chat:stream', { projectId: msg.projectId, chunk: msg.chunk, done: msg.done });
+        break;
+      }
+
+      case 'directory:list': {
+        this.emit('directory:list', { path: msg.path, entries: msg.entries });
+        break;
+      }
     }
   }
 }

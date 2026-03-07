@@ -142,6 +142,11 @@ export class Broadcaster {
     this.broadcast({ type: 'hooks:status', timestamp: Date.now() });
   }
 
+  /** Broadcast a project/session/chat message to all clients */
+  broadcastProjectMessage(message: ServerMessage): void {
+    this.broadcast(message);
+  }
+
   /** Send a message to a specific client */
   sendToClient(ws: WebSocket, message: ServerMessage): void {
     if (ws.readyState === 1) {

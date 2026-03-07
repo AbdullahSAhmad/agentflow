@@ -68,6 +68,12 @@ export interface ActivityEntry {
   prevZone?: ZoneId;
   tool?: string;
   toolArgs?: string; // truncated summary of tool input
+  /** Full tool input object (for inspection modal) */
+  toolInputFull?: Record<string, unknown>;
+  /** Tool result/output text (for inspection modal) */
+  toolResult?: string;
+  /** Unique tool_use ID for correlating calls with results */
+  toolUseId?: string;
   text?: string;
   /** Diff data from Edit tool calls */
   diff?: { filePath: string; oldText: string; newText: string };

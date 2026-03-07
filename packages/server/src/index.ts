@@ -12,6 +12,10 @@ import { Broadcaster } from './ws/broadcaster.js';
 import { registerWsHandler } from './ws/ws-handler.js';
 import { registerApiRoutes } from './routes/api.js';
 import { HookEventManager } from './hooks/hook-event-manager.js';
+import { ProjectRegistry } from './projects/project-registry.js';
+import { AgentApiManager } from './projects/agentapi-manager.js';
+import { ChatProxy } from './projects/chat-proxy.js';
+import { detectAgentApi } from './projects/agentapi-installer.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -33,8 +37,26 @@ export async function main() {
   const hookManager = new HookEventManager(stateManager);
   const broadcaster = new Broadcaster(stateManager, hookManager);
 
-  registerWsHandler(app, stateManager, broadcaster, hookManager);
-  registerApiRoutes(app, stateManager);
+  // Project management — detect managed or system agentapi binary
+  const projectRegistry = new ProjectRegistry(config.agentMoveHome);
+  const detected = detectAgentApi(config.agentMoveHome);
+  const agentApiBinary = detected.found ? detected.path : config.agentApiBinary;
+  const agentApiManager = new AgentApiManager(config.agentApiBasePort, agentApiBinary);
+  const chatProxy = new ChatProxy(agentApiManager, broadcaster);
+
+  // Forward session status changes from AgentAPI manager
+  agentApiManager.on('session:status', (session: import('@agent-move/shared').ProjectSession) => {
+    broadcaster.broadcastProjectMessage({
+      type: 'session:status',
+      session,
+      timestamp: Date.now(),
+    });
+  });
+
+  registerWsHandler(app, stateManager, broadcaster, hookManager, {
+    projectRegistry, agentApiManager, chatProxy,
+  });
+  registerApiRoutes(app, stateManager, { projectRegistry, agentApiManager });
 
   // Hook endpoint: receives Claude Code hook events via POST /hook
   app.post('/hook', {
@@ -92,6 +114,8 @@ export async function main() {
   const shutdown = async () => {
     console.log('Shutting down...');
     watcher.stop();
+    chatProxy.dispose();
+    agentApiManager.dispose();
     hookManager.dispose();
     broadcaster.dispose();
     stateManager.dispose();

@@ -3,6 +3,7 @@ import type { AnomalyEvent } from './anomaly.js';
 import type { ToolChainData } from './tool-chain.js';
 import type { TaskGraphData } from './task-graph.js';
 import type { PendingPermission } from './hooks.js';
+import type { Project, ProjectSession, ChatMessage, DirectoryEntry } from './project.js';
 
 /** Server → Client messages */
 export type ServerMessage =
@@ -20,7 +21,14 @@ export type ServerMessage =
   | PermissionResolvedMessage
   | SessionPhaseMessage
   | HooksStatusMessage
-  | TaskCompletedNotification;
+  | TaskCompletedNotification
+  | ProjectListMessage
+  | ProjectAddedMessage
+  | ProjectRemovedMessage
+  | SessionStatusMessage
+  | ChatMessageMessage
+  | ChatStreamMessage
+  | DirectoryListMessage;
 
 export interface FullStateMessage {
   type: 'full_state';
@@ -129,6 +137,55 @@ export interface TaskCompletedNotification {
   timestamp: number;
 }
 
+/** Project list with sessions and AgentAPI availability */
+export interface ProjectListMessage {
+  type: 'project:list';
+  projects: Project[];
+  sessions: ProjectSession[];
+  agentApiAvailable: boolean;
+  agentApiVersion: string | null;
+  timestamp: number;
+}
+
+export interface ProjectAddedMessage {
+  type: 'project:added';
+  project: Project;
+  timestamp: number;
+}
+
+export interface ProjectRemovedMessage {
+  type: 'project:removed';
+  projectId: string;
+  timestamp: number;
+}
+
+export interface SessionStatusMessage {
+  type: 'session:status';
+  session: ProjectSession;
+  timestamp: number;
+}
+
+export interface ChatMessageMessage {
+  type: 'chat:message';
+  message: ChatMessage;
+  timestamp: number;
+}
+
+export interface ChatStreamMessage {
+  type: 'chat:stream';
+  projectId: string;
+  chunk: string;
+  done: boolean;
+  timestamp: number;
+}
+
+export interface DirectoryListMessage {
+  type: 'directory:list';
+  path: string;
+  entries: DirectoryEntry[];
+  timestamp: number;
+}
+
 /** Client → Server messages */
 export type ClientMessage =
   | PingMessage
@@ -137,7 +194,14 @@ export type ClientMessage =
   | RequestTaskGraphMessage
   | PermissionApproveMessage
   | PermissionDenyMessage
-  | PermissionApproveAlwaysMessage;
+  | PermissionApproveAlwaysMessage
+  | ProjectAddClientMessage
+  | ProjectRemoveClientMessage
+  | SessionStartClientMessage
+  | SessionStopClientMessage
+  | ChatSendClientMessage
+  | RequestProjectsClientMessage
+  | RequestDirectoryClientMessage;
 
 export interface PingMessage {
   type: 'ping';
@@ -175,4 +239,39 @@ export interface PermissionApproveAlwaysMessage {
   type: 'permission:approve-always';
   permissionId: string;
   rules: unknown[];
+}
+
+export interface ProjectAddClientMessage {
+  type: 'project:add';
+  path: string;
+}
+
+export interface ProjectRemoveClientMessage {
+  type: 'project:remove';
+  projectId: string;
+}
+
+export interface SessionStartClientMessage {
+  type: 'session:start';
+  projectId: string;
+}
+
+export interface SessionStopClientMessage {
+  type: 'session:stop';
+  projectId: string;
+}
+
+export interface ChatSendClientMessage {
+  type: 'chat:send';
+  projectId: string;
+  content: string;
+}
+
+export interface RequestProjectsClientMessage {
+  type: 'request:projects';
+}
+
+export interface RequestDirectoryClientMessage {
+  type: 'request:directory';
+  path: string;
 }

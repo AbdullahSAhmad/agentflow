@@ -175,6 +175,19 @@ export class AgentStateManager extends EventEmitter {
     }
   }
 
+  /** Clamp tool input values to prevent oversized history entries */
+  private clampToolInput(input: Record<string, unknown>): Record<string, unknown> {
+    const clamped: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input)) {
+      if (typeof value === 'string') {
+        clamped[key] = value.length > 3000 ? value.slice(0, 3000) + '...' : value;
+      } else {
+        clamped[key] = value;
+      }
+    }
+    return clamped;
+  }
+
   /**
    * Resolve a sessionId to its canonical agent ID.
    */
@@ -520,6 +533,22 @@ export class AgentStateManager extends EventEmitter {
   /** Mutate agent state based on activity (shared between silent and loud paths) */
   private mutateAgentState(agent: AgentState, activity: ParsedActivity, now: number, _sessionInfo: SessionInfo) {
     const agentId = agent.id;
+
+    // tool_result is metadata-only — don't reset idle/activity state
+    if (activity.type === 'tool_result') {
+      // Just attach result to existing history entry
+      const entries = this.activityHistory.get(agentId);
+      if (entries && activity.toolUseId && activity.toolResultText) {
+        for (let i = entries.length - 1; i >= 0; i--) {
+          if (entries[i].kind === 'tool' && entries[i].toolUseId === activity.toolUseId) {
+            entries[i].toolResult = activity.toolResultText;
+            break;
+          }
+        }
+      }
+      return;
+    }
+
     agent.lastActivityAt = now;
     agent.isIdle = false;
     agent.isDone = false;
@@ -657,6 +686,8 @@ export class AgentStateManager extends EventEmitter {
           kind: 'tool',
           tool: activity.toolName ?? undefined,
           toolArgs: this.summarizeToolInput(activity.toolInput),
+          toolInputFull: activity.toolInput ? this.clampToolInput(activity.toolInput) : undefined,
+          toolUseId: activity.toolUseId,
           zone: agent.currentZone,
           diff: diffData,
         });
@@ -677,15 +708,19 @@ export class AgentStateManager extends EventEmitter {
         this.pendingTool.delete(agentId);
         agent.isWaitingForUser = false;
         if (activity.text) {
-          agent.speechText = activity.text;
-          agent.currentActivity = activity.text;
+          // Speech bubbles use short text; history gets the full text
+          const shortText = activity.text.length > 200 ? activity.text.slice(0, 197) + '...' : activity.text;
+          agent.speechText = shortText;
+          agent.currentActivity = shortText;
           if (!agent.taskDescription) {
-            agent.taskDescription = activity.text;
+            agent.taskDescription = shortText;
           }
+          // Store full text in history (capped at 5000 chars for memory)
+          const historyText = activity.text.length > 5000 ? activity.text.slice(0, 5000) + '...' : activity.text;
           this.addHistory(agentId, {
             timestamp: now,
             kind: 'text',
-            text: activity.text,
+            text: historyText,
           });
         }
         break;

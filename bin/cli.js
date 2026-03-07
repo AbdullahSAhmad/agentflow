@@ -58,6 +58,9 @@ if (args.includes('--help') || args.includes('-h')) {
   console.log(`    ${c.cyan}npx agent-move hooks install${c.reset}       Install Claude Code hooks`);
   console.log(`    ${c.cyan}npx agent-move hooks uninstall${c.reset}     Remove Claude Code hooks`);
   console.log(`    ${c.cyan}npx agent-move hooks status${c.reset}        Check hooks installation`);
+  console.log(`    ${c.cyan}npx agent-move agentapi install${c.reset}    Download & install AgentAPI`);
+  console.log(`    ${c.cyan}npx agent-move agentapi uninstall${c.reset}  Remove AgentAPI binary`);
+  console.log(`    ${c.cyan}npx agent-move agentapi status${c.reset}     Check AgentAPI installation`);
   console.log();
   console.log(`${c.bold}  Options:${c.reset}`);
   console.log(`    ${c.dim}--port <n>${c.reset}    Server port (default: 3333)`);
@@ -112,6 +115,64 @@ if (args[0] === 'hooks') {
     process.exit(1);
   });
 
+} else if (args[0] === 'agentapi') {
+  // ── agentapi subcommand ────────────────────────────────────────────────────
+  const sub = args[1];
+  async function runAgentApi() {
+    const os = await import('os');
+    const path = await import('path');
+    const agentMoveHome = path.join(os.homedir(), '.agent-move');
+
+    const { detectAgentApi, installAgentApi, uninstallAgentApi } =
+      await import('../packages/server/dist/projects/agentapi-installer.js');
+
+    if (sub === 'install') {
+      console.log();
+      status(`${c.cyan}...${c.reset}`, 'AgentAPI', 'Downloading latest release from GitHub...');
+      const result = await installAgentApi(agentMoveHome);
+      console.log();
+      if (result.installed) {
+        if (result.alreadyInstalled) {
+          status(`${c.green}*${c.reset}`, 'AgentAPI', `already installed (${result.version})`);
+        } else {
+          status(`${c.green}+${c.reset}`, 'AgentAPI', `installed ${result.version}`);
+          status(`${c.green}+${c.reset}`, 'Binary', result.path);
+        }
+      } else {
+        status(`${c.red}!${c.reset}`, 'AgentAPI', `installation failed: ${result.error}`);
+      }
+      console.log();
+    } else if (sub === 'uninstall') {
+      const removed = uninstallAgentApi(agentMoveHome);
+      console.log();
+      if (removed) {
+        status(`${c.yellow}-${c.reset}`, 'AgentAPI', 'binary removed');
+      } else {
+        status(`${c.dim}-${c.reset}`, 'AgentAPI', 'not installed (nothing to remove)');
+      }
+      console.log();
+    } else if (sub === 'status') {
+      const det = detectAgentApi(agentMoveHome);
+      console.log();
+      if (det.found) {
+        status(`${c.green}*${c.reset}`, 'AgentAPI', `${det.version}`);
+        status(`${c.green}*${c.reset}`, 'Binary', det.path);
+      } else {
+        status(`${c.dim}-${c.reset}`, 'AgentAPI', 'not installed');
+        console.log(`${c.dim}  Run ${c.reset}npx agent-move agentapi install${c.dim} to download it.${c.reset}`);
+      }
+      console.log();
+    } else {
+      console.log();
+      console.log(`${c.bold}  Usage:${c.reset} agent-move agentapi <install|uninstall|status>`);
+      console.log();
+    }
+  }
+  runAgentApi().catch((err) => {
+    console.error(`\n  ${c.red}!${c.reset}  ${err?.message ?? err}\n`);
+    process.exit(1);
+  });
+
 } else {
   // ── server (default) ────────────────────────────────────────────────────────
   const preferredPort = (() => {
@@ -153,7 +214,33 @@ if (args[0] === 'hooks') {
       console.log(`${c.dim}    You can install manually: npx agent-move hooks install${c.reset}`);
     }
 
-    // ── Step 2: Start server ────────────────────────────────────────────────
+    // ── Step 2: Auto-install AgentAPI ──────────────────────────────────────
+    try {
+      const os = await import('os');
+      const pathMod = await import('path');
+      const agentMoveHome = pathMod.join(os.homedir(), '.agent-move');
+      const { detectAgentApi, installAgentApi } =
+        await import('../packages/server/dist/projects/agentapi-installer.js');
+
+      const det = detectAgentApi(agentMoveHome);
+      if (det.found) {
+        status(`${c.green}*${c.reset}`, 'AgentAPI', `ready (${det.version})`);
+      } else {
+        status(`${c.cyan}...${c.reset}`, 'AgentAPI', 'not found — downloading...');
+        const result = await installAgentApi(agentMoveHome);
+        if (result.installed) {
+          status(`${c.green}+${c.reset}`, 'AgentAPI', `installed ${result.version}`);
+        } else {
+          status(`${c.yellow}!${c.reset}`, 'AgentAPI', `skipped — ${result.error}`);
+          console.log(`${c.dim}    You can install manually: npx agent-move agentapi install${c.reset}`);
+        }
+      }
+    } catch (err) {
+      status(`${c.yellow}!${c.reset}`, 'AgentAPI', `skipped — ${err?.message ?? 'unknown error'}`);
+      console.log(`${c.dim}    You can install manually: npx agent-move agentapi install${c.reset}`);
+    }
+
+    // ── Step 3: Start server ────────────────────────────────────────────────
     const { main } = await import('../packages/server/dist/index.js');
     const { port } = await main();
 
@@ -161,12 +248,12 @@ if (args[0] === 'hooks') {
       status(`${c.yellow}~${c.reset}`, 'Port', `${preferredPort} was busy, using ${port}`);
     }
 
-    // ── Step 3: Detect platform ─────────────────────────────────────────────
+    // ── Step 4: Detect platform ─────────────────────────────────────────────
     const platforms = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
     const platformName = platforms[process.platform] || process.platform;
     status(`${c.blue}*${c.reset}`, 'Platform', platformName);
 
-    // ── Step 4: JSONL watch path ────────────────────────────────────────────
+    // ── Step 5: JSONL watch path ────────────────────────────────────────────
     const os = await import('os');
     const path = await import('path');
     const claudeHome = path.join(os.homedir(), '.claude');
@@ -181,7 +268,7 @@ if (args[0] === 'hooks') {
 
     troubleshooting();
 
-    // ── Step 5: Auto-open browser ───────────────────────────────────────────
+    // ── Step 6: Auto-open browser ───────────────────────────────────────────
     if (!skipOpen) {
       const { exec } = await import('child_process');
       let cmd;

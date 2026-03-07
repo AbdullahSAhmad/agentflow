@@ -2,16 +2,50 @@ import type { FastifyInstance } from 'fastify';
 import type { AgentStateManager } from '../state/agent-state-manager.js';
 import type { Broadcaster } from './broadcaster.js';
 import type { HookEventManager } from '../hooks/hook-event-manager.js';
+import type { ProjectRegistry } from '../projects/project-registry.js';
+import type { AgentApiManager } from '../projects/agentapi-manager.js';
+import type { ChatProxy } from '../projects/chat-proxy.js';
+import { listDirectory } from '../projects/directory-browser.js';
+
+export interface WsHandlerDeps {
+  stateManager: AgentStateManager;
+  broadcaster: Broadcaster;
+  hookManager?: HookEventManager;
+  projectRegistry?: ProjectRegistry;
+  agentApiManager?: AgentApiManager;
+  chatProxy?: ChatProxy;
+}
 
 export function registerWsHandler(
   app: FastifyInstance,
   stateManager: AgentStateManager,
   broadcaster: Broadcaster,
-  hookManager?: HookEventManager
+  hookManager?: HookEventManager,
+  deps?: { projectRegistry?: ProjectRegistry; agentApiManager?: AgentApiManager; chatProxy?: ChatProxy }
 ) {
+  const projectRegistry = deps?.projectRegistry;
+  const agentApiManager = deps?.agentApiManager;
+  const chatProxy = deps?.chatProxy;
+
+  function sendProjectList(socket: import('ws').WebSocket): void {
+    if (!projectRegistry || !agentApiManager) return;
+    const msg = {
+      type: 'project:list' as const,
+      projects: projectRegistry.getAll(),
+      sessions: agentApiManager.getAllSessions(),
+      agentApiAvailable: agentApiManager.isAvailable(),
+      agentApiVersion: agentApiManager.getVersion(),
+      timestamp: Date.now(),
+    };
+    try { socket.send(JSON.stringify(msg)); } catch {}
+  }
+
   app.get('/ws', { websocket: true }, (socket, _req) => {
     console.log('WebSocket client connected');
     broadcaster.addClient(socket);
+
+    // Send project list on connect
+    sendProjectList(socket);
 
     socket.on('message', (data: any) => {
       try {
@@ -50,6 +84,62 @@ export function registerWsHandler(
           hookManager.resolvePermission(msg.permissionId, {
             behavior: 'allow',
             updatedPermissions: msg.rules,
+          });
+        } else if (msg.type === 'request:projects') {
+          sendProjectList(socket);
+        } else if (msg.type === 'request:directory') {
+          const result = listDirectory(msg.path || undefined);
+          socket.send(JSON.stringify({
+            type: 'directory:list',
+            path: result.path,
+            entries: result.entries,
+            timestamp: Date.now(),
+          }));
+        } else if (msg.type === 'project:add' && projectRegistry) {
+          try {
+            const project = projectRegistry.add(msg.path);
+            broadcaster.broadcastProjectMessage({
+              type: 'project:added',
+              project,
+              timestamp: Date.now(),
+            });
+          } catch (err: any) {
+            console.warn(`[ws] Failed to add project: ${err.message}`);
+          }
+        } else if (msg.type === 'project:remove' && projectRegistry) {
+          const removed = projectRegistry.remove(msg.projectId);
+          if (removed) {
+            // Stop session if running
+            agentApiManager?.stopSession(msg.projectId);
+            chatProxy?.clearHistory(msg.projectId);
+            chatProxy?.disconnectSSE(msg.projectId);
+            broadcaster.broadcastProjectMessage({
+              type: 'project:removed',
+              projectId: msg.projectId,
+              timestamp: Date.now(),
+            });
+          }
+        } else if (msg.type === 'session:start' && projectRegistry && agentApiManager) {
+          const project = projectRegistry.getById(msg.projectId);
+          if (project) {
+            try {
+              const session = agentApiManager.startSession(project);
+              broadcaster.broadcastProjectMessage({
+                type: 'session:status',
+                session,
+                timestamp: Date.now(),
+              });
+            } catch (err: any) {
+              console.warn(`[ws] Failed to start session: ${err.message}`);
+            }
+          }
+        } else if (msg.type === 'session:stop' && agentApiManager) {
+          agentApiManager.stopSession(msg.projectId);
+          chatProxy?.disconnectSSE(msg.projectId);
+          chatProxy?.clearHistory(msg.projectId);
+        } else if (msg.type === 'chat:send' && chatProxy) {
+          chatProxy.sendMessage(msg.projectId, msg.content).catch((err: any) => {
+            console.warn(`[ws] Chat send error: ${err.message}`);
           });
         }
       } catch {

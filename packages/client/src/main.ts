@@ -37,6 +37,10 @@ import { ActivityFeed } from './ui/activity-feed.js';
 import { WaterfallPanel } from './ui/waterfall-panel.js';
 import { RelationshipGraph } from './ui/relationship-graph.js';
 import { AgentHoverBar } from './ui/agent-hover-bar.js';
+import { ToolInspectorModal } from './ui/tool-inspector-modal.js';
+import { ProjectsPanel } from './ui/projects-panel.js';
+import { ChatPanel } from './ui/chat-panel.js';
+import { FolderBrowser } from './ui/folder-browser.js';
 
 async function main() {
   const appEl = document.getElementById('app')!;
@@ -71,8 +75,12 @@ async function main() {
   // ── Right Panel: Overlay (agent list) ──
   const overlay = new Overlay(store);
 
+  // ── Tool Inspector Modal (drill-down for tool input/output) ──
+  const toolInspector = new ToolInspectorModal();
+
   // ── Detail Panel (renders inside right panel) ──
   const detailPanel = new AgentDetailPanel(store);
+  detailPanel.setToolInspector(toolInspector);
 
   // Wire agent click from overlay -> detail panel
   overlay.setAgentClickHandler((agentId) => {
@@ -137,6 +145,14 @@ async function main() {
 
   // ── Agent Relationship Graph (in right panel) ──
   const relationshipGraph = new RelationshipGraph(store, rightPanelContent);
+
+  // ── Projects Panel (in right panel) ──
+  const projectsPanel = new ProjectsPanel(store, rightPanelContent);
+  const folderBrowser = new FolderBrowser(store);
+  projectsPanel.setFolderBrowser(folderBrowser);
+
+  // ── Chat Panel (in right panel) ──
+  const chatPanel = new ChatPanel(store, rightPanelContent);
 
   // ── Permission Panel (floating) ──
   const permissionPanel = new PermissionPanel(store);
@@ -260,6 +276,8 @@ async function main() {
     activity:    { show: () => activityFeed.show(), hide: () => activityFeed.hide(), title: 'Activity Feed' },
     waterfall:   { show: () => waterfallPanel.show(), hide: () => waterfallPanel.hide(), title: 'Waterfall' },
     graph:       { show: () => relationshipGraph.show(), hide: () => relationshipGraph.hide(), title: 'Agent Graph' },
+    projects:    { show: () => projectsPanel.show(), hide: () => projectsPanel.hide(), title: 'Projects' },
+    chat:        { show: () => chatPanel.show(), hide: () => chatPanel.hide(), title: 'Chat' },
   };
 
   function switchRightPanel(tab: NavTab): void {
@@ -354,6 +372,8 @@ async function main() {
       case 'toggle-activity':    toggleTab('activity'); break;
       case 'toggle-waterfall':   toggleTab('waterfall'); break;
       case 'toggle-graph':       toggleTab('graph'); break;
+      case 'toggle-projects':   toggleTab('projects'); break;
+      case 'toggle-chat':       toggleTab('chat'); break;
       case 'timeline-live':      break;
     }
   }
@@ -371,6 +391,11 @@ async function main() {
   // Connect WebSocket
   const ws = new WsClient(store);
   ws.connect();
+
+  // Request projects on connection
+  store.on('connection:status', (status) => {
+    if (status === 'connected') store.requestProjects();
+  });
 
   // Zoom controls
   document.getElementById('zoom-in')!.addEventListener('click', () => world.camera.zoomIn());
@@ -471,6 +496,10 @@ async function main() {
     waterfallPanel.destroy();
     activityFeed.destroy();
     minimap.dispose();
+    toolInspector.dispose();
+    projectsPanel.dispose();
+    chatPanel.dispose();
+    folderBrowser.dispose();
     store.dispose();
   });
 

@@ -1,6 +1,7 @@
 import type { AgentState, ActivityEntry } from '@agent-move/shared';
 import { AGENT_PALETTES, ZONE_MAP, getProjectColorIndex } from '@agent-move/shared';
 import type { StateStore } from '../connection/state-store.js';
+import type { ToolInspectorModal } from './tool-inspector-modal.js';
 import { escapeHtml, escapeAttr, truncate, formatTokens, formatTokenPair, formatDuration, hexToCss } from '../utils/formatting.js';
 
 /**
@@ -18,6 +19,7 @@ export class AgentDetailPanel {
   private onShutdownBound: (agentId: string) => void;
   private _onCustomize: ((agent: AgentState) => void) | null = null;
   private _customizationLookup: ((agent: AgentState) => { displayName: string; colorIndex: number }) | null = null;
+  private _toolInspector: ToolInspectorModal | null = null;
 
   // Sparkline data
   private tokenSamples: number[] = [];
@@ -113,6 +115,11 @@ export class AgentDetailPanel {
   /** Set a lookup function to resolve customized display name + color from agent state */
   setCustomizationLookup(lookup: (agent: AgentState) => { displayName: string; colorIndex: number }): void {
     this._customizationLookup = lookup;
+  }
+
+  /** Set the tool inspector modal instance for drill-down */
+  setToolInspector(inspector: ToolInspectorModal): void {
+    this._toolInspector = inspector;
   }
 
   /** Get customized display name for an agent */
@@ -452,8 +459,28 @@ export class AgentDetailPanel {
 
     // Show most recent first
     const reversed = [...this.entries].reverse();
-    feedEl.innerHTML = reversed.map((e) => this.renderEntry(e)).join('');
+    feedEl.innerHTML = reversed.map((e, i) => this.renderEntry(e, reversed.length - 1 - i)).join('');
     feedEl.scrollTop = 0;
+
+    // Bind click handlers for tool entries (inspection)
+    feedEl.querySelectorAll('.feed-tool-inspect').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt((el as HTMLElement).dataset.entryIdx ?? '', 10);
+        if (!isNaN(idx) && this.entries[idx] && this._toolInspector) {
+          this._toolInspector.open(this.entries[idx]);
+        }
+      });
+    });
+
+    // Bind expand/collapse for long text entries
+    feedEl.querySelectorAll('.feed-text-toggle').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const parent = (el as HTMLElement).closest('.feed-entry');
+        if (parent) parent.classList.toggle('expanded');
+      });
+    });
   }
 
   /** Make a path relative to the agent's project directory */
@@ -475,38 +502,55 @@ export class AgentDetailPanel {
     return args.replace(/\\/g, '/').split(projDir).join('');
   }
 
-  private renderEntry(entry: ActivityEntry): string {
+  private renderEntry(entry: ActivityEntry, index: number): string {
     const time = this.formatTime(entry.timestamp);
     const t = `<span class="feed-time">${time}</span>`;
 
     switch (entry.kind) {
       case 'tool': {
-        const args = entry.toolArgs ? ` <span class="feed-args">${escapeAttr(this.shortenArgs(entry.toolArgs))}</span>` : '';
-        return `<div class="feed-entry feed-tool">${t} <span class="feed-icon">&#128295;</span> <span class="feed-tool-name">${escapeAttr(entry.tool ?? 'unknown')}</span>${args}</div>`;
+        const args = entry.toolArgs ? ` <span class="feed-args">${escapeHtml(this.shortenArgs(entry.toolArgs))}</span>` : '';
+        const hasInspectable = entry.toolInputFull || entry.toolResult;
+        const inspectBadge = hasInspectable
+          ? ` <button class="feed-tool-inspect" data-entry-idx="${index}" title="Inspect tool input/output">${entry.toolResult ? '\u{1F50D}' : '\u{1F4CB}'}</button>`
+          : '';
+        const resultBadge = entry.toolResult
+          ? ' <span class="feed-result-badge">has output</span>'
+          : '';
+        return `<div class="feed-entry feed-tool">${t} <span class="feed-icon">\u{1F527}</span> <span class="feed-tool-name">${escapeHtml(entry.tool ?? 'unknown')}</span>${args}${resultBadge}${inspectBadge}</div>`;
       }
 
       case 'text': {
-        const text = entry.text ? this.shortenArgs(entry.text) : '';
-        return `<div class="feed-entry feed-text">${t} <span class="feed-icon">&#128172;</span> ${escapeAttr(text)}</div>`;
+        const raw = entry.text ? this.shortenArgs(entry.text) : '';
+        const isLong = raw.length > 150;
+        if (isLong) {
+          const preview = raw.slice(0, 150);
+          return `<div class="feed-entry feed-text feed-text-long">
+            ${t} <span class="feed-icon">\u{1F4AC}</span>
+            <span class="feed-text-preview">${escapeHtml(preview)}...</span>
+            <span class="feed-text-full">${escapeHtml(raw)}</span>
+            <button class="feed-text-toggle" title="Expand/collapse">\u{25BC}</button>
+          </div>`;
+        }
+        return `<div class="feed-entry feed-text">${t} <span class="feed-icon">\u{1F4AC}</span> ${escapeHtml(raw)}</div>`;
       }
 
       case 'zone-change': {
         const from = ZONE_MAP.get(entry.prevZone!);
         const to = ZONE_MAP.get(entry.zone!);
-        return `<div class="feed-entry feed-zone">${t} <span class="feed-icon">&#128694;</span> ${from?.icon ?? ''} ${from?.label ?? entry.prevZone} &rarr; ${to?.icon ?? ''} ${to?.label ?? entry.zone}</div>`;
+        return `<div class="feed-entry feed-zone">${t} <span class="feed-icon">\u{1F6B6}</span> ${from?.icon ?? ''} ${from?.label ?? entry.prevZone} &rarr; ${to?.icon ?? ''} ${to?.label ?? entry.zone}</div>`;
       }
 
       case 'spawn':
-        return `<div class="feed-entry feed-spawn">${t} <span class="feed-icon">&#9889;</span> Agent spawned</div>`;
+        return `<div class="feed-entry feed-spawn">${t} <span class="feed-icon">\u{26A1}</span> Agent spawned</div>`;
 
       case 'idle':
-        return `<div class="feed-entry feed-idle">${t} <span class="feed-icon">&#9749;</span> Went idle</div>`;
+        return `<div class="feed-entry feed-idle">${t} <span class="feed-icon">\u{2615}</span> Went idle</div>`;
 
       case 'shutdown':
-        return `<div class="feed-entry feed-shutdown">${t} <span class="feed-icon">&#128721;</span> Agent shut down</div>`;
+        return `<div class="feed-entry feed-shutdown">${t} <span class="feed-icon">\u{1F6D1}</span> Agent shut down</div>`;
 
       case 'tokens':
-        return `<div class="feed-entry feed-tokens">${t} <span class="feed-icon">&#127916;</span> +${formatTokens(entry.inputTokens ?? 0)} in / +${formatTokens(entry.outputTokens ?? 0)} out</div>`;
+        return `<div class="feed-entry feed-tokens">${t} <span class="feed-icon">\u{1F39C}</span> +${formatTokens(entry.inputTokens ?? 0)} in / +${formatTokens(entry.outputTokens ?? 0)} out</div>`;
 
       default:
         return '';

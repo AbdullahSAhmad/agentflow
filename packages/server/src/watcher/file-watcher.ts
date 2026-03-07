@@ -85,8 +85,8 @@ export class FileWatcher {
 
         let hadParsedActivity = false;
         for (const line of lines) {
-          const parsed = this.parser.parseLine(line);
-          if (parsed) {
+          const activities = this.parser.parseLine(line);
+          for (const parsed of activities) {
             hadParsedActivity = true;
             this.stateManager.processMessage(sessionId, parsed, sessionInfo);
           }
