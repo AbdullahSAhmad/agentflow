@@ -9,4 +9,6 @@ export const config = {
   shutdownTimeoutMs: 30 * 60 * 1000, // 30 minutes
   /** How recently a session file must be modified to be considered "active" on startup */
   activeThresholdMs: 10 * 60 * 1000, // 10 minutes
+  /** Enable OpenCode session watching (auto-detected if storage dir exists) */
+  enableOpenCode: process.env.AGENT_MOVE_OPENCODE !== 'false',
 } as const;

@@ -7,6 +7,7 @@ import fastifyStatic from '@fastify/static';
 import { config } from './config.js';
 import { FileWatcher } from './watcher/file-watcher.js';
 import { SessionScanner } from './watcher/session-scanner.js';
+import { OpenCodeWatcher } from './watcher/opencode/opencode-watcher.js';
 import { AgentStateManager } from './state/agent-state-manager.js';
 import { Broadcaster } from './ws/broadcaster.js';
 import { registerWsHandler } from './ws/ws-handler.js';
@@ -65,9 +66,17 @@ export async function main() {
   const existingSessions = await scanner.scan();
   console.log(`Found ${existingSessions.length} existing session files`);
 
-  // Start file watcher
+  // Start Claude Code file watcher
   const watcher = new FileWatcher(config.claudeHome, stateManager);
   await watcher.start(existingSessions);
+
+  // Start OpenCode watcher (no-op if OpenCode is not installed)
+  const openCodeWatcher = config.enableOpenCode
+    ? new OpenCodeWatcher(stateManager)
+    : null;
+  if (openCodeWatcher) {
+    await openCodeWatcher.start(config.activeThresholdMs);
+  }
 
   // Flush stale pending queues from replay — only real-time Agent tool calls should name subagents
   stateManager.flushPendingQueues();
@@ -92,6 +101,7 @@ export async function main() {
   const shutdown = async () => {
     console.log('Shutting down...');
     watcher.stop();
+    openCodeWatcher?.stop();
     hookManager.dispose();
     broadcaster.dispose();
     stateManager.dispose();

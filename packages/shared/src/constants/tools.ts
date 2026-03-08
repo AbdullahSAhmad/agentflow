@@ -28,16 +28,25 @@ export const TOOL_ZONE_MAP: Record<string, ZoneId> = {
   Edit: 'files',
   Glob: 'files',
   NotebookEdit: 'files',
+  // OpenCode equivalents (lowercase)
+  read: 'files',
+  write: 'files',
+  edit: 'files',
+  glob: 'files',
 
   // Terminal zone
   Bash: 'terminal',
+  bash: 'terminal',
 
   // Search zone
   Grep: 'search',
   WebSearch: 'search',
+  grep: 'search',
+  websearch: 'search',
 
   // Web zone
   WebFetch: 'web',
+  webfetch: 'web',
   mcp__chrome_devtools__navigate_page: 'web',
   mcp__chrome_devtools__click: 'web',
   mcp__chrome_devtools__fill: 'web',
@@ -58,6 +67,9 @@ export const TOOL_ZONE_MAP: Record<string, ZoneId> = {
   TaskUpdate: 'tasks',
   TaskList: 'tasks',
   TaskGet: 'tasks',
+  // OpenCode todo tools
+  todoread: 'tasks',
+  todowrite: 'tasks',
 
   // Spawn zone
   Agent: 'spawn',

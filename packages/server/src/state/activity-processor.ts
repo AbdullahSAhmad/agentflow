@@ -12,6 +12,10 @@ export const LONG_RUNNING_TOOLS = new Set([
   'Agent',
   'WebFetch',
   'WebSearch',
+  // OpenCode lowercase equivalents
+  'bash',
+  'webfetch',
+  'websearch',
   // Tools that block waiting for user input
   'AskUserQuestion',
   // Browser/playwright tools that wait for navigation or network
@@ -101,10 +105,10 @@ function processToolUseActivity(
     agent.gitBranch = getGitBranch(agent.projectPath);
   }
 
-  // Extract file paths from file-related tools
+  // Extract file paths from file-related tools (supports both snake_case and camelCase)
   if (activity.toolInput) {
     const input = activity.toolInput as Record<string, unknown>;
-    const filePath = input.file_path as string | undefined;
+    const filePath = (input.file_path ?? input.filePath) as string | undefined;
     if (filePath) {
       agent.recentFiles = [filePath, ...agent.recentFiles.filter(f => f !== filePath)].slice(0, 10);
     }
@@ -158,13 +162,13 @@ function processToolUseActivity(
     });
   }
 
-  // Capture diff from Edit tool
+  // Capture diff from Edit tool (supports both Claude Code snake_case and OpenCode camelCase)
   let diffData: { filePath: string; oldText: string; newText: string } | undefined;
-  if (activity.toolName === 'Edit' && activity.toolInput) {
+  if ((activity.toolName === 'Edit' || activity.toolName === 'edit') && activity.toolInput) {
     const input = activity.toolInput as Record<string, unknown>;
-    const fp = (input.file_path as string) ?? '';
-    const oldStr = (input.old_string as string) ?? '';
-    const newStr = (input.new_string as string) ?? '';
+    const fp = ((input.file_path ?? input.filePath) as string) ?? '';
+    const oldStr = ((input.old_string ?? input.oldString) as string) ?? '';
+    const newStr = ((input.new_string ?? input.newString) as string) ?? '';
     if (fp && (oldStr || newStr)) {
       diffData = {
         filePath: fp,
